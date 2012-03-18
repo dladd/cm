@@ -2,7 +2,7 @@
 
 \subsubsection{Governing equations:}
 
-The Navier-Stokes equations arise from applying Newton's second law to fluid motion, i.e. the temporal and spatial fluid inertia is in equilibrium with internal (volume/body)  and external (surface) forces. The reaction of surface forces can be described in terms of the fluid stress as the sum of a diffusing viscous term, plus a pressure term. The equations are named for the 19th century contributions of Claude-Louis Navier and George Gabriel Stokes. A solution of the Navier-Stokes equations is called a flow field, i.e. velocity and pressure field, which is a description of the fluid at a given point in space and time.  In the common case of an incompressible Newtonian fluid, the nonlinear Navier-Stokes equations (three-dimensional, transient) can be written using 'primitive variables' (i.e. u-velocity, p-pressure) as:
+The Navier-Stokes equations arise from applying Newton's second law to fluid motion, i.e. the temporal and spatial fluid inertia is in equilibrium with internal (volume/body)  and external (surface) forces. The reaction of surface forces can be described in terms of the fluid stress as the sum of a diffusing viscous term, plus a pressure term. The equations are named for the 19th century contributions of Claude-Louis Navier and George Gabriel Stokes. A solution of the Navier-Stokes equations is called a flow field, i.e. velocity and pressure field, which is a description of the fluid at a given point in space and time.  In the case of an incompressible Newtonian fluid, the nonlinear Navier-Stokes equations (three-dimensional, transient) can be written using 'primitive variables' (i.e. u-velocity, p-pressure) as:
 \begin{equation}
   \label{eqn:NSE}
     \rho\delby{\vect{u}}{t}+\rho(\vect{u}\cdot\grad)\vect{u}=\vect{f}-\grad{p}+\mu\laplacian{\vect{u}}
@@ -12,11 +12,11 @@ accompanied by the conservation of mass (incompressibility)
   \label{eqn:NSEIncompressibility}
   \diverg{\vect{u}}=0
 \end{equation}
-where $\vect{u}(\vect{x},t)=(u_1,u_2,u_3)^T$ is the velocity vector depending on spatial coordinates $\vect{x}=(x_1,x_2,x_3)^T$ and the time $t$, $p$ is the scalar pressure, $\vect{f}$ an applied body force, and the material parameters $\mu$ and $\rho$ are the fluid viscosity and density, respectively.The first term represents unsteady accelerative inertial contributions, the second represents the nonlinear convective acceleration terms, the $\grad{p}$ term the pressure contributions, and the last term represents viscous stresses in the system.
+where $\vect{u}(\vect{x},t)=(u_1,u_2,u_3)^T$ is the velocity vector depending on spatial coordinates $\vect{x}=(x_1,x_2,x_3)^T$ and the time $t$, $p$ is the scalar pressure, $\vect{f}$ an applied body force, and the material parameters $\mu$ and $\rho$ are the fluid viscosity and density, respectively.The first term represents unsteady accelerative inertial contributions, the second represents the nonlinear convective acceleration terms, the $\grad{p}$ term the pressure contributions, and the last term represents viscous stresses in the system. While seemingly straightforward, solution methods for this system are nearly as diverse as their applications. We will discuss one method for solving the isothermal incompressible form of the nonlinear dynamic system.
 % incompressibility and the LBB condition
 As with Stokes flow, the incompressibility condition $\diverg{\vect{u}}=0$ also creates restrictions on the formulation of the velocity and pressure spaces using finite elements known as the Ladyzhenkaya, Babuska, and Brezzi (LBB) or inf-sup consistency condition. Several methods have been devised to define a pressure function that is consistent with the velocity space using primitive variables. These include mixed element methods, penalty methods, generalized petrov-galerkin methods using pressure poisson correction, operator splitting, and semi-implicit pressure correction (Chung).
 
-Using a classic Galerkin formulation, mixed methods are perhaps conceptually the most straightforward method of satisfying LBB, in which velocity is defined over a space one order higher than pressure (e.g. quadratic elements for velocity, linear for pressure), allowing incompressibility to be satisfied. It should be noted that our use of a mixed formulation to satisfy LBB will also be reflected in the shape functions that our weak formulation depends on. For example, using a 2D element with biquadratic velocity and linear pressure, we will have 9 weight functions for each velocity component and 4 for the pressure. 
+Using a classic Galerkin formulation, mixed methods are perhaps conceptually the most straightforward method of satisfying LBB, in which velocity is defined over a space one order higher than pressure (e.g. quadratic elements for velocity, linear for pressure), allowing incompressibility to be satisfied. It should be noted that our use of a mixed formulation to satisfy LBB will also be reflected in the shape functions that our weak formulation depends on. For example, using a 2D element with biquadratic velocity and bilinear pressure (a 2D Taylor-Hood element), we will have 9 weight functions for each velocity component and 4 for the pressure. 
 % meaning of pressure in NSE.
 
 \subsubsection{Weak Formulation}
@@ -43,21 +43,33 @@ Integrating by parts, we will get the weak form of the system of PDEs with the a
  -\gint{\Gamma_N}{}{\dotprod{p}{\vect{n}}\vect{w}}{\Gamma_N}
 \end{multline}
 
+
+For more extensive discussion of this procedure, along with other weak forms of the PDEs, we refer to \cite{gresho_isothermal:2000}. 
+
 % Boundary conditions
-For more extensive discussion of this procedure, along with other weak forms of the PDEs, we refer to (Gresho and Sani). From this weak form, we see natural (Neumann) boundary conditions arising as a direct result of the integration. Neumann boundary conditions will therefore consist of a pressure term and viscous stress acting normal to a given boundary. 
+From this weak form, we see natural (Neumann) boundary conditions arising as a direct result of the integration. Neumann boundary conditions will therefore consist of a pressure term and viscous stress acting normal to a given boundary. 
 \begin{gather}
  \label{eqn:NSENeumannBC}  
    \fnof{\vect{q}}{\vect{x},t} = \mu\dotprod{\grad{\fnof{\vect{u}}{\vect{x},t}}}{\normal}-p\cdot{\normal}  \\
 %   \fnof{\vect{q_2}}{\vect{x},t} = p\cdot{\normal} \\
    \quad \vect{x}\in\Gamma_{N}
 \end{gather}
-Specification of Neumann boundaries will therefore require the specification of the viscous stress and pressures across lower order element DOFs using the mixed formulation. Dirichlet boundary conditions on a boundary $\Gamma_D$ for velocity or pressure will take the form:
+It should also be noted that in defining Neumann conditions, we are in effect specifying a force at the given boundary, and this will involve direct modification of the right hand side of our system. We will address this process in further detail in our discussion about our implementation of the coupled multidomain method \cite{vignon:2006}.
+
+Dirichlet boundary conditions for velocity may also be defined on a boundary $\Gamma_D$:
 \begin{gather}
  \label{eqn:NSEDirichletBC} 
-  \fnof{\vect{u}}{\vect{x},t} = \fnof{\vect{d}}{\vect{x},t} \quad \vect{x}\in\Gamma_{D}\\
-  \fnof{p}{\vect{x},t} = \fnof{\vect{d}}{\vect{x},t} \quad \vect{x}\in\Gamma_{D}
+  \fnof{\vect{u}}{\vect{x},t} = \fnof{\vect{d}}{\vect{x},t} \quad \vect{x}\in\Gamma_{D}
 \end{gather}
-Which may be directly applied to the relevant DOFs.
+Where $\vect{d}$  is a vector of velocity values to be specified at the given velocity DOFs. This makes defining inlet and outlet velocities for system boundaries relatively simple, as values are simply applied as fixed. Wall boundaries may also be easily defined by setting their DOF velocity values to zero: 
+\begin{gather}
+ \label{eqn:NSEDirichletBC} 
+  \fnof{\vect{u}}{\vect{x},t} = \vect{0} \quad \vect{x}\in\Gamma_{D}
+\end{gather}
+This will ensure that fluid velocity approaching the wall is parallel to it and will not penetrate. A third type of boundary condition may be implicitly applied to DOFs by leaving their values undefined in boundary regions. These 'do nothing' boundary conditions are useful in situations involving one unknown boundary or those involving symmetric geometries. However, 'do nothing' boundaries also imply a zero pressure boundary condition and are therefore dangerous in nonsymmetric branching conduits (like blood vessels) as the fluid will be driven by these pressure gradients, modifing flow field features \cite{galdi:2000}.
+
+Creating well-posed boundary conditions with specified pressures is considerably more difficult than the velocity case. In effect, attempting to specify the scalar pressure values via Dirichlet conditions is the same as attempting to specify Neumann conditions with undefined $\grad{\fnof{\vect{u}}{\vect{x},t}}$ values, which creates two unknowns at the boundary (the other being the force term $\fnof{\vect{q}}{\vect{x},t}$). 
+
 
 \subsubsection{Tensor notation}
 Assuming no forcing terms and substituting the natural boundary as defined above, equation \eqref{GalerkinNSE} in tensor notation becomes:

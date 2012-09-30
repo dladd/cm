@@ -2324,11 +2324,12 @@ CONTAINS
     INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
-    INTEGER(INTG) :: equations_set_idx,loop_idx
+    INTEGER(INTG) :: equations_set_idx,loop_idx,interfaceConditionIdx
     REAL(DP) :: CURRENT_TIME,TIME_INCREMENT
     TYPE(CONTROL_LOOP_TYPE), POINTER :: CONTROL_LOOP,CONTROL_TIME_LOOP
     TYPE(EQUATIONS_TYPE), POINTER :: EQUATIONS
     TYPE(EQUATIONS_SET_TYPE), POINTER :: EQUATIONS_SET
+    TYPE(INTERFACE_CONDITION_TYPE), POINTER :: interfaceCondition
     TYPE(SOLVER_TYPE), POINTER :: SOLVER
     TYPE(DYNAMIC_SOLVER_TYPE), POINTER :: DYNAMIC_SOLVER
     TYPE(SOLVER_MAPPING_TYPE), POINTER :: SOLVER_MAPPING
@@ -2374,6 +2375,12 @@ CONTAINS
                     ENDIF
                   ENDIF
                 ENDDO !equations_set_idx
+
+                DO interfaceConditionIdx=1,SOLVER_MAPPING%NUMBER_OF_INTERFACE_CONDITIONS
+                  interfaceCondition=>SOLVER_MAPPING%INTERFACE_CONDITIONS(interfaceConditionIdx)%PTR
+                  CALL INTERFACE_CONDITION_ASSEMBLE(interfaceCondition,ERR,ERROR,*999)
+                ENDDO !interfaceConditionIdx
+
                 !Get current control loop times. The control loop may be a sub loop below a time loop, so iterate up
                 !through loops checking for the time loop
                 CONTROL_TIME_LOOP=>CONTROL_LOOP

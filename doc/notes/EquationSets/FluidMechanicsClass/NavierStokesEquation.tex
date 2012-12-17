@@ -403,6 +403,31 @@ Notice the integration by parts is done only to the standard Galerkin weights- t
 
 The use of the Petrov-Galerkin formulation in this way allows for the stabilization of moderately convective problems. However, it also results in nonsymmetric mass matrices with the additional term, making classical mass-lumping more difficult. As a result, the use of explicit methods also becomes more difficult for time-dependent problems. 
 
+\subsubsection{Constitutive Equations for non-Newtonian behaviour}
+% Shear rate
+Shear rate ($\gamma=\grad{\vect{u}}$) is the fluid analog to strain in solid mechanics and can be described as the rate of deformation of the fluid under an applied shearing motion. Notably, for incompressible fluids, the diagonal terms will be 0, following conservation of mass: $\diverg{\vect{u}} = 0$. 
+% Stress in the Navier-Stokes Equations
+Returning to the Navier-Stokes equation for momentum, we recall:
+\begin{equation}
+  \label{eqn:NSE}
+    \rho\delby{\vect{u}}{t}+\rho(\vect{u}\cdot\grad)\vect{u}=\vect{f}-\grad{p}+\mu\laplacian{\vect{u}}
+\end{equation}
+The divergence of stress in the Navier-Stokes equations for most fluids consists of two parts- a pressure gradient term $\grad{p}$ and the deviatoric stress tensor, $\diverg{\tau} = \mu\laplacian{\vect{u}}$. The components of the normal (Cauchy) stress $\sigma$ can therefore be described:
+\begin{equation}
+  \label{eqn:NSE}
+    \sigma_{ij} = -p\delta_{ij} + \mu\gamma_{ij}
+\end{equation}
+For compressible flows, this would include an additional term including the stress due to dilatation and compression and the second coefficient of viscosity.
+
+As fluid deforms due to shearing motion, stresses arise due to viscous interactions from shear rates and affect the deviatoric stress tensor, independent of the pressure component of stress.
+
+Fluids that exhibit a linear relationship between shear rate and deviatoric stress tensors are described as Newtonian. For these fluids, this relationship is defined by the standard constant of proportionality between the two tensors- viscosity. However, for some fluids (e.g. paint, corn starch in water, drilling mud, blood) this relationship is nonlinear and may be described using a mathematical relationship. As in solid mechanics, equations that describe relationships between stress (deviatoric stress $\tau$) and strain (strain rate $\gamma$) are described as constitutive equations. The study of fluids that exhibit a nonlinear relationship between shear rate and stress falls under Rheology.
+% Blood
+In the context of bioengineering applications of incompressible flow, blood is one of, if not the, most commonly studied fluid. As a suspension of cells in plasma, it exhibits notable shear-thinning behaviour. Blood's tendency to reversibly aggregate also gives its viscosity a time-dependent character beyond the scope of the shear rate, making it a thixotropic fluid. The interactions between RBCs may also contribute to viscoelastic behaviour.
+% 
+The mechanical behaviour of blood has been approximated by several different constitutive models since the 1960s. Many of these models address the shear-thinning behaviour of blood through a definition of viscosity $\mu$ as apparent viscosity $\mu_{app}$, with apparent viscosity a function of the shear rate, $\gamma$. This makes definition of such rheological models straightforward and is supported by the fundamental definition of viscosity as a relationship between shear rate and stress \cite{white_viscous_2006}. We choose to describe constitutive equations so that the deviatoric stress tensor is a function of the shear rate ($\grad{\vect{u}}$) tensor. This strategy could allow similar specification of coefficients of viscosity based on shear rate but also allows for the specification of stresses by the constitutive model, which can include yield stress, viscoelastic, thixotropic, and anistropic effects (at the expense of increased implementational difficulty). 
+% numerical treatement
+Constitutive laws in OpenCMISS are handled by CellML. For non-Newtonian fluids, the rate of deformation tensor is first calculated for the fluid region, then passed to the CellML solver. CellML returns the deviatoric stress tensor based on the chosen constitutive equation(s). 
 
 \subsubsection{Arbitrary Lagrangian-Eulerian (ALE) Formulation}
 %ALE form

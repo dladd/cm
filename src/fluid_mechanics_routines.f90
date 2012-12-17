@@ -83,6 +83,7 @@ MODULE FLUID_MECHANICS_ROUTINES
 
   PUBLIC FLUID_MECHANICS_FINITE_ELEMENT_JACOBIAN_EVALUATE,FLUID_MECHANICS_FINITE_ELEMENT_RESIDUAL_EVALUATE
   PUBLIC FluidMechanics_NodalJacobianEvaluate,FluidMechanics_NodalResidualEvaluate
+  PUBLIC FluidMechanics_FiniteElementPreResidualEvaluate
 
   PUBLIC FLUID_MECHANICS_EQUATIONS_SET_CLASS_TYPE_SET,FLUID_MECHANICS_FINITE_ELEMENT_CALCULATE, &
     & FLUID_MECHANICS_EQUATIONS_SET_SETUP,FLUID_MECHANICS_EQUATIONS_SET_SOLUTION_METHOD_SET, &
@@ -611,7 +612,7 @@ CONTAINS
       CASE(EQUATIONS_SET_STOKES_EQUATION_TYPE)
         CALL STOKES_EQUATION_ANALYTIC_CALCULATE(EQUATIONS_SET,BOUNDARY_CONDITIONS,ERR,ERROR,*999)
       CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_TYPE)
-        CALL NAVIER_STOKES_ANALYTIC_CALCULATE(EQUATIONS_SET,BOUNDARY_CONDITIONS,ERR,ERROR,*999)
+        CALL NavierStokes_AnalyticCalculate(EQUATIONS_SET,BOUNDARY_CONDITIONS,ERR,ERROR,*999)
       CASE(EQUATIONS_SET_DARCY_EQUATION_TYPE)
         CALL DARCY_EQUATION_ANALYTIC_CALCULATE(EQUATIONS_SET,BOUNDARY_CONDITIONS,ERR,ERROR,*999)
       CASE(EQUATIONS_SET_DARCY_PRESSURE_EQUATION_TYPE)
@@ -950,6 +951,54 @@ CONTAINS
     CALL EXITS("FLUID_MECHANICS_CONTROL_LOOP_POST_LOOP")
     RETURN 1
   END SUBROUTINE FLUID_MECHANICS_CONTROL_LOOP_POST_LOOP
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Pre-evaluates the residual for an fluid mechanics class finite element equation set.
+  SUBROUTINE FluidMechanics_FiniteElementPreResidualEvaluate(equationsSet,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet !<A pointer to the equations set
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+    !Local Variables
+    TYPE(VARYING_STRING) :: localError
+
+    CALL ENTERS("FluidMechanics_FiniteElementPreResidualEvaluate",err,error,*999)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      SELECT CASE(equationsSet%TYPE)
+      CASE(EQUATIONS_SET_STOKES_EQUATION_TYPE)
+        ! Do nothing
+      CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_TYPE)
+        CALL NavierStokes_FiniteElementPreResidualEvaluate(equationsSet,err,error,*999)
+      CASE(EQUATIONS_SET_DARCY_EQUATION_TYPE)
+        ! Do nothing
+      CASE(EQUATIONS_SET_DARCY_PRESSURE_EQUATION_TYPE)
+        ! Do nothing
+      CASE(EQUATIONS_SET_POISEUILLE_EQUATION_TYPE)
+        ! Do nothing
+      CASE(EQUATIONS_SET_BURGERS_EQUATION_TYPE)
+        ! Do nothing
+      CASE(EQUATIONS_SET_CHARACTERISTIC_EQUATION_TYPE)
+        ! Do nothing
+      CASE DEFAULT
+        localError="Equations set type "//TRIM(NUMBER_TO_VSTRING(equationsSet%TYPE,"*",ERR,ERROR))// &
+          & " is not valid for a fluid mechanics equation set class."
+        CALL FLAG_ERROR(localError,ERR,ERROR,*999)
+      END SELECT
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated",err,error,*999)
+    ENDIF
+       
+    CALL EXITS("FluidMechanics_FiniteElementPreResidualEvaluate")
+    RETURN
+999 CALL ERRORS("FluidMechanics_FiniteElementPreResidualEvaluate",err,error)
+    CALL EXITS("FluidMechanics_FiniteElementPreResidualEvaluate")
+    RETURN 1
+  END SUBROUTINE FluidMechanics_FiniteElementPreResidualEvaluate
 
   !
   !================================================================================================================================

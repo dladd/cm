@@ -3867,6 +3867,10 @@ CONTAINS
               IF(ASSOCIATED(RHS_VECTOR)) UPDATE_RHS_VECTOR=RHS_VECTOR%UPDATE_VECTOR
               IF(ASSOCIATED(NONLINEAR_MATRICES)) UPDATE_NONLINEAR_RESIDUAL=NONLINEAR_MATRICES%UPDATE_RESIDUAL
             CASE(EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE)
+              DECOMPOSITION => DEPENDENT_FIELD%DECOMPOSITION
+              MESH_COMPONENT_NUMBER = DECOMPOSITION%MESH_COMPONENT_NUMBER
+              global_element_idx = DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%MAPPINGS%ELEMENTS% &
+                & LOCAL_TO_GLOBAL_MAP(ELEMENT_NUMBER)
               DYNAMIC_MATRICES=>EQUATIONS_MATRICES%DYNAMIC_MATRICES
               STIFFNESS_MATRIX=>DYNAMIC_MATRICES%MATRICES(1)%PTR
               DAMPING_MATRIX=>DYNAMIC_MATRICES%MATRICES(2)%PTR
@@ -3888,7 +3892,7 @@ CONTAINS
                   EQUATIONS_SET_FIELD_FIELD=>EQUATIONS_EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD
                   IF(ASSOCIATED(EQUATIONS_SET_FIELD_FIELD)) THEN
                     CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(EQUATIONS_SET_FIELD_FIELD%DECOMPOSITION%TOPOLOGY, &
-                      & ELEMENT_NUMBER,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
+                      & global_element_idx,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
                     IF(USER_ELEMENT_EXISTS .AND. .NOT. GHOST_ELEMENT ) THEN
                       TAU_SUPG=0.0_DP
                       !Calculate SUPG element metrics
@@ -3930,7 +3934,7 @@ CONTAINS
                     USER_ELEMENT_EXISTS=.FALSE.
                     GHOST_ELEMENT=.TRUE.
                     CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(EQUATIONS_SET_FIELD_FIELD%DECOMPOSITION%TOPOLOGY, &
-                      & ELEMENT_NUMBER,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
+                      & global_element_idx,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
                     IF(USER_ELEMENT_EXISTS .AND. .NOT. GHOST_ELEMENT ) THEN
                       TAU_SUPG=0.0_DP
                       !Calculate SUPG element metrics
@@ -4008,12 +4012,10 @@ CONTAINS
 
             ! Get viscosity and density
             IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE) THEN
-              IF(USER_ELEMENT_EXISTS .AND. .NOT. GHOST_ELEMENT ) THEN
-                CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-                  & global_element_idx,ng,1,MU_PARAM,ERR,ERROR,*999)
-                ! scale to cm
-                MU_PARAM=MU_PARAM/100.0_DP
-              ENDIF
+              CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                & global_element_idx,ng,1,MU_PARAM,ERR,ERROR,*999)
+              ! scale to cm
+              MU_PARAM=MU_PARAM/100.0_DP
             ENDIF
 
             !Start with matrix calculations
@@ -4595,7 +4597,8 @@ CONTAINS
             ENDIF
           ENDIF
 
-          IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE) THEN
+          IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE .OR. &
+           & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE) THEN
             !If this is a boundary element, calculate RHS vector for multidomain boundaries
             IF(MESH_ELEMENT%BOUNDARY_ELEMENT) THEN
               CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
@@ -5192,13 +5195,17 @@ CONTAINS
                 FIELD_VARIABLE=>NONLINEAR_MAPPING%RESIDUAL_VARIABLES(1)%PTR
                 FIELD_VAR_TYPE=FIELD_VARIABLE%VARIABLE_TYPE
                 LINEAR_MAPPING=>EQUATIONS_MAPPING%LINEAR_MAPPING
+                DECOMPOSITION => DEPENDENT_FIELD%DECOMPOSITION
+                MESH_COMPONENT_NUMBER = DECOMPOSITION%MESH_COMPONENT_NUMBER
+                userElementNumber = DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%MAPPINGS%ELEMENTS% &
+                  & LOCAL_TO_GLOBAL_MAP(ELEMENT_NUMBER)
                 IF(ASSOCIATED(JACOBIAN_MATRIX)) UPDATE_JACOBIAN_MATRIX=JACOBIAN_MATRIX%UPDATE_JACOBIAN
                 EQUATIONS_EQUATIONS_SET_FIELD=>EQUATIONS_SET%EQUATIONS_SET_FIELD
                 IF(ASSOCIATED(EQUATIONS_EQUATIONS_SET_FIELD)) THEN
                   EQUATIONS_SET_FIELD_FIELD=>EQUATIONS_EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD
                   IF(ASSOCIATED(EQUATIONS_SET_FIELD_FIELD)) THEN
                     CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(EQUATIONS_SET_FIELD_FIELD%DECOMPOSITION%TOPOLOGY, &
-                      & ELEMENT_NUMBER,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
+                      & userElementNumber,USER_ELEMENT_EXISTS,DECOMPOSITION_LOCAL_ELEMENT_NUMBER,GHOST_ELEMENT,ERR,ERROR,*999)              
                     IF(USER_ELEMENT_EXISTS .AND. .NOT. GHOST_ELEMENT ) THEN
                       TAU_SUPG=0.0_DP
                       !Calculate SUPG element metrics
@@ -5307,12 +5314,10 @@ CONTAINS
 
               ! Get viscosity and density
               IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE) THEN
-                IF(USER_ELEMENT_EXISTS .AND. .NOT. GHOST_ELEMENT ) THEN
-                  CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-                    & userElementNumber,ng,1,MU_PARAM,ERR,ERROR,*999)
+                CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                  & userElementNumber,ng,1,MU_PARAM,ERR,ERROR,*999)
                 ! scale to cm
                 MU_PARAM=MU_PARAM/100.0_DP
-                ENDIF
               ENDIF
 
              IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_STATIC_NAVIER_STOKES_SUBTYPE.OR.  &
@@ -5578,13 +5583,6 @@ CONTAINS
                 ENDDO !mh
               END IF
             ENDDO !ng
-
-            ! IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE) THEN
-            !   !If this is a boundary element, calculate RHS vector for multidomain boundaries
-            !   IF(MESH_ELEMENT%BOUNDARY_ELEMENT) THEN
-            !     CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
-            !   ENDIF
-            ! ENDIF
 
             !!!-- B I F U R C A T I O N   F L U X   U P W I N D I N G --!!!
             IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_1DTRANSIENT_NAVIER_STOKES_SUBTYPE .OR. &
@@ -6057,11 +6055,6 @@ CONTAINS
             CALL NavierStokes_CalculateBoundaryFlux(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
             equationsSet=>SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
-
-! TEMP!
-            IF(CONTROL_LOOP%TIME_LOOP%ITERATION_NUMBER>0) THEN
-!              CALL NavierStokes_ShearRateCalculate(equationsSet,err,error,*999)
-            ENDIF
 
             IF(ASSOCIATED(equationsSet)) THEN
               IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
@@ -9660,11 +9653,6 @@ CONTAINS
                   ENDIF
                   tauSUPG=(alphaParameter*lengthScale)/(2.0_DP*maxVelocitySUPG)
 
-!TEMP - test without SUPG weighting
-                  IF(equationsSet%SUBTYPE==EQUATIONS_SET_ConstitutiveMu_NAVIER_STOKES_SUBTYPE) THEN
-                    tauSUPG=0.0_DP
-                  ENDIF
-
                 ELSE
                   tauSUPG=0.0_DP
                 ENDIF
@@ -9832,21 +9820,21 @@ CONTAINS
           userElementNumber = dependentVariable%FIELD%DECOMPOSITION%DOMAIN(1)%PTR%MAPPINGS% &
            & ELEMENTS%LOCAL_TO_GLOBAL_MAP(elementNumber)            
           CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &
-            & elementNumber,userElementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
+            & userElementNumber,userElementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
           IF(userElementExists .AND. .NOT. ghostElement ) THEN
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,5,elementNormal(1),err,error,*999)
+             & userElementNumber,5,elementNormal(1),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,6,elementNormal(2),err,error,*999)
+             & userElementNumber,6,elementNormal(2),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,7,elementNormal(3),err,error,*999)
+             & userElementNumber,7,elementNormal(3),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,8,boundaryValue,err,error,*999)
+             & userElementNumber,8,boundaryValue,err,error,*999)
             boundaryID=NINT(boundaryValue)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,9,boundaryFlux,err,error,*999)
+             & userElementNumber,9,boundaryFlux,err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementNumber,10,resistanceProximal,err,error,*999)
+             & userElementNumber,10,resistanceProximal,err,error,*999)
             !Check if boundary element is a multidomain boundary element
             elementIsMultidomainBoundary=.FALSE.
             normalMagnitude=L2NORM(elementNormal)
@@ -10008,7 +9996,7 @@ CONTAINS
               DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
                 normalProjection=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
                 normalProjection2=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DXI_DX(componentIdx,:))
-                IF(ABS(normalProjection)<ZERO_TOLERANCE) CYCLE
+!                IF(ABS(normalProjection)<ZERO_TOLERANCE) CYCLE
                 IF(face%XI_DIRECTION<0) THEN
                   normalProjection=-normalProjection
                   normalProjection2=-normalProjection2
@@ -10507,22 +10495,22 @@ CONTAINS
             boundaryFlux(boundaryID) = boundaryFlux(boundaryID) + faceVelocity
             boundaryArea(boundaryID) = boundaryArea(boundaryID) + faceArea
 
-            IF (boundaryID ==3 .AND. correctFace) THEN
-              numberOfFaceElements = numberOfFaceElements + 1
-              numberOfElementGauss = dependentBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)% &
-               & PTR%NUMBER_OF_GAUSS
-              DO gaussIdx=1,numberOfElementGauss
-                CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-                  & userElementNumber,gaussIdx,1,shearRate,err,error,*999)
-                totalShearRate = totalShearRate + shearRate
-              ENDDO
-            ENDIF
+            ! IF (boundaryID ==3 .AND. correctFace) THEN
+            !   numberOfFaceElements = numberOfFaceElements + 1
+            !   numberOfElementGauss = dependentBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)% &
+            !    & PTR%NUMBER_OF_GAUSS
+            !   DO gaussIdx=1,numberOfElementGauss
+            !     CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+            !       & userElementNumber,gaussIdx,1,shearRate,err,error,*999)
+            !     totalShearRate = totalShearRate + shearRate
+            !   ENDDO
+            ! ENDIF
 
           END IF !boundaryIdentifier
         END IF ! computational node check
       ENDDO !elementIdx                 
 
-      averageShearRate = totalShearRate / (REAL(numberOfElementGauss)*REAL(numberOfFaceElements))
+!      averageShearRate = totalShearRate / (REAL(numberOfElementGauss)*REAL(numberOfFaceElements))
 
 !      sumFaceFlux=0.0_DP
 !      sumFaceFlux2=0.0_DP
@@ -10548,8 +10536,8 @@ CONTAINS
         ENDIF
       ENDDO
 
-      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Average shear rate: ",averageShearRate,err,error,*999)
-      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"number face elements: ",numberOfFaceElements,err,error,*999)
+!      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Average shear rate: ",averageShearRate,err,error,*999)
+!      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"number face elements: ",numberOfFaceElements,err,error,*999)
 
       ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Conservation of face flux error %",conserveFaces,err,error,*999)
       ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Conservation of inner face flux error %",conserveFaces2,err,error,*999)
@@ -11420,6 +11408,7 @@ CONTAINS
     INTEGER(INTG) :: elementIdx,elementNumber,decompositionLocalElementNumber
     INTEGER(INTG) :: componentIdx,gaussIdx,xiIdx,derivativeIdx
     INTEGER(INTG) :: meshComponentNumber,numberOfDimensions,i,j,userElementNumber
+    INTEGER(INTG) :: localElementNumber,startElement,stopElement,loopNumber
     REAL(DP) :: gaussWeight,shearRate,secondInvariant,strainRate
     REAL(DP) :: dUdXi(3,3),dXidX(3,3),dUdX(3,3),dUdX2(3,3),dUdXTrans(3,3),rateOfDeformation(3,3),velocityGauss(3),shearRate2(9)
     REAL(DP) :: shearRateDefault
@@ -11471,101 +11460,136 @@ CONTAINS
       geometricInterpolatedPoint=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
       defaultUpdate=.FALSE.
 
-      ! Loop over elements to locate boundary elements
-      DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
-        userElementNumber = elementsMapping%LOCAL_TO_GLOBAL_MAP(elementIdx)
-        !Check computational node for elementIdx
-        elementExists=.FALSE.
-        ghostElement=.TRUE.
-        CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(decomposition%TOPOLOGY, &
-          & userElementNumber,elementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
-        IF(elementExists .AND. .NOT. ghostElement) THEN
-          dependentBasis=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%BASIS
-          quadratureScheme=>dependentBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
+      DO loopNumber = 1,2
+        IF(loopNumber == 1) THEN
+          startElement = elementsMapping%INTERNAL_START
+          stopElement = elementsMapping%INTERNAL_FINISH
+        ELSE IF(loopNumber == 2) THEN
+          startElement = elementsMapping%BOUNDARY_START
+          stopElement = elementsMapping%BOUNDARY_FINISH
+!          stopElement = elementsMapping%GHOST_FINISH
+        ELSE IF(loopNumber == 3) THEN
+          startElement = elementsMapping%GHOST_START
+          stopElement = elementsMapping%GHOST_FINISH
+        ENDIF
 
-          CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,elementIdx,equations%INTERPOLATION% &
-            & DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,err,error,*999)
-          CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,elementIdx,equations%INTERPOLATION% &
-            & GEOMETRIC_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,err,error,*999)
+        ! Loop over internal and boundary elements 
+        DO elementIdx=startElement,stopElement
 
-          ! Loop over gauss points
-          DO gaussIdx=1,quadratureScheme%NUMBER_OF_GAUSS
-            !Get interpolated velocity
-            CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gaussIdx, &
-              & dependentInterpolatedPoint,err,error,*999)
-            CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gaussIdx, &
-              & geometricInterpolatedPoint,err,error,*999)
-            pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
-            CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_VOLUME_TYPE,pointMetrics,err,error,*999)
-            gaussWeight=quadratureScheme%GAUSS_WEIGHTS(gaussIdx)
-            !Interpolated values at gauss point
-            dXidX=0.0_DP
-            dUdXi=0.0_DP
-            velocityGauss=dependentInterpolatedPoint%values(1:3,NO_PART_DERIV)
+!        DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
 
-            dUdXi(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
-            dUdXi(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
-            IF(numberOfDimensions == 3) THEN
-              dUdXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
-            ELSE
-              dUdXi(1:3,3)=0.0_DP
-            ENDIF
-            dXidX=pointMetrics%DXI_DX(:,:)
+  !      DO elementIdx=1,elementsMapping%NUMBER_OF_INTERNAL
+  !      DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
+          localElementNumber=elementsMapping%DOMAIN_LIST(elementIdx)
+!          localElementNumber=elementIdx
+!              global_element_idx = DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%MAPPINGS%ELEMENTS% &
+!                & LOCAL_TO_GLOBAL_MAP(ELEMENT_NUMBER)
+!          userElementNumber = elementsMapping%LOCAL_TO_GLOBAL_MAP(elementIdx)
+          userElementNumber = elementsMapping%LOCAL_TO_GLOBAL_MAP(localElementNumber)
+          !Check computational node for elementIdx
+          elementExists=.FALSE.
+          ghostElement=.TRUE.
+          CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(decomposition%TOPOLOGY, &
+            & userElementNumber,elementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
 
-            dUdX=0.0_DP
-            dUdXTrans=0.0_DP
-            strainRate=0.0_DP
+          IF(ghostElement) THEN
+            CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Ghost: ",userElementNumber,err,error,*999)            
+          ENDIF
 
-            CALL MATRIX_PRODUCT(dUdXi,dXidX,dUdX,ERR,ERROR,*999) !dU/dX = dU/dxi * dxi/dX (deformation gradient tensor)
-            CALL MATRIX_TRANSPOSE(dUdX,dUdXTrans,ERR,ERROR,*999)
-            DO i=1,3
-              DO j=1,3
-                strainRate = strainRate + (dUdX(i,j)*dUdXTrans(i,j))
-                rateOfDeformation(i,j) = (dUdX(i,j) + dUdXTrans(i,j))/2.0_DP
-              ENDDO
-            ENDDO            
+!          IF(elementExists .AND. .NOT. ghostElement) THEN
+          IF(elementExists) THEN
+            dependentBasis=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(localElementNumber)%BASIS
+            quadratureScheme=>dependentBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
 
-            secondInvariant=rateOfDeformation(1,1)*rateOfDeformation(2,2) +rateOfDeformation(2,2)*rateOfDeformation(3,3) + &
-                 & rateOfDeformation(1,1)*rateOfDeformation(3,3) - rateOfDeformation(1,2)**2.0_DP - &
-                 & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
+            CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber,equations%INTERPOLATION% &
+              & DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,err,error,*999)
+            CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,localElementNumber,equations%INTERPOLATION% &
+              & GEOMETRIC_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,err,error,*999)
 
-            IF(secondInvariant > -1.0E-30_DP) THEN
-              CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"WARNING: positive secondInvariant of rate of deformation tensor: ",&
-               & secondInvariant,err,error,*999)
-            ENDIF
+            ! Loop over gauss points
+            DO gaussIdx=1,quadratureScheme%NUMBER_OF_GAUSS
+              !Get interpolated velocity
+              CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gaussIdx, &
+                & dependentInterpolatedPoint,err,error,*999)
+              CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gaussIdx, &
+                & geometricInterpolatedPoint,err,error,*999)
+              pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
+              CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_VOLUME_TYPE,pointMetrics,err,error,*999)
+              gaussWeight=quadratureScheme%GAUSS_WEIGHTS(gaussIdx)
+              !Interpolated values at gauss point
+              dXidX=0.0_DP
+              dUdXi=0.0_DP
+              velocityGauss=dependentInterpolatedPoint%values(1:3,NO_PART_DERIV)
 
-            secondInvariant= - rateOfDeformation(1,2)**2.0_DP - &
-                 & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
+              dUdXi(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
+              dUdXi(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
+              IF(numberOfDimensions == 3) THEN
+                dUdXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
+              ELSE
+                dUdXi(1:3,3)=0.0_DP
+              ENDIF
+              dXidX=pointMetrics%DXI_DX(:,:)
 
-            IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
-              ! For power-law based constitutive models, this will keep the viscosity from exploding as shearRate --> 0
-              IF(secondInvariant > -1.0E-30_DP) THEN
-                CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"WARNING: positive secondInvariant of rate of deformation tensor: ",&
-                 & secondInvariant,err,error,*999)
-                CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Element number: ",userElementNumber,err,error,*999)
-                CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Gauss point number: ",gaussIdx,err,error,*999)
-                shearRateDefault=1.0E-10_DP
-                defaultUpdate=.TRUE.
-                EXIT
+              dUdX=0.0_DP
+              dUdXTrans=0.0_DP
+              strainRate=0.0_DP
+
+              CALL MATRIX_PRODUCT(dUdXi,dXidX,dUdX,ERR,ERROR,*999) !dU/dX = dU/dxi * dxi/dX (deformation gradient tensor)
+              CALL MATRIX_TRANSPOSE(dUdX,dUdXTrans,ERR,ERROR,*999)
+              DO i=1,3
+                DO j=1,3
+                  strainRate = strainRate + (dUdX(i,j)*dUdXTrans(i,j))
+                  rateOfDeformation(i,j) = (dUdX(i,j) + dUdXTrans(i,j))/2.0_DP
+                ENDDO
+              ENDDO            
+
+              secondInvariant=rateOfDeformation(1,1)*rateOfDeformation(2,2) +rateOfDeformation(2,2)*rateOfDeformation(3,3) + &
+                   & rateOfDeformation(1,1)*rateOfDeformation(3,3) - rateOfDeformation(1,2)**2.0_DP - &
+                   & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
+
+              ! IF(secondInvariant > -1.0E-30_DP) THEN
+              !   CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"WARNING: positive secondInvariant of rate of deformation tensor: ",&
+              !    & secondInvariant,err,error,*999)
+              ! ENDIF
+
+              secondInvariant= - rateOfDeformation(1,2)**2.0_DP - &
+                   & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
+
+              IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
+                ! For power-law based constitutive models, this will keep the viscosity from exploding as shearRate --> 0
+                IF(secondInvariant > -1.0E-30_DP) THEN
+                  CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE, &
+                   & "WARNING: positive secondInvariant of rate of deformation tensor: ",secondInvariant,err,error,*999)
+                  CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Element number: ",userElementNumber,err,error,*999)
+                  CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Gauss point number: ",gaussIdx,err,error,*999)
+                  shearRateDefault=1.0E-10_DP
+                  defaultUpdate=.TRUE.
+                  EXIT
+                ELSE
+                  shearRate=SQRT(-4.0_DP*secondInvariant)
+                  componentIdx=1
+                  CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
+                    & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
+                ENDIF
               ELSE
                 shearRate=SQRT(-4.0_DP*secondInvariant)
                 componentIdx=1
                 CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
                   & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
               ENDIF
-            ELSE
-              shearRate=SQRT(-4.0_DP*secondInvariant)
-              componentIdx=1
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
-                & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
-            ENDIF
 
-          END DO !gaussIdx
-        ENDIF ! check for ghost element
-        IF(defaultUpdate .EQV. .TRUE.) THEN
-          EXIT
-        ENDIF
-      END DO !elementIdx
+            END DO !gaussIdx
+          ENDIF ! check for ghost element
+          IF(defaultUpdate .EQV. .TRUE.) THEN
+            EXIT
+          ENDIF
+        END DO !elementIdx
+
+      !   IF(defaultUpdate .EQV. .TRUE.) THEN
+      !     EXIT
+      !   ENDIF
+
+      END DO ! internal/boundary element loops
 
       IF(defaultUpdate .EQV. .TRUE.) THEN
         CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Updating shear field values: ", &

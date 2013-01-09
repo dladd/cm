@@ -2494,6 +2494,7 @@ CONTAINS
     TYPE(SOLVER_MATRIX_TYPE), POINTER :: SOLVER_MATRIX
     TYPE(SOLVER_TYPE), POINTER :: SOLVER2 !<A pointer to the solvers
     TYPE(SOLVER_TYPE), POINTER :: CELLML_SOLVER
+    TYPE(SOLVERS_TYPE), POINTER :: solvers
     TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: NONLINEAR_SOLVER
     TYPE(BOUNDARY_CONDITIONS_TYPE), POINTER :: boundaryConditions
     TYPE(VARYING_STRING) :: LOCAL_ERROR
@@ -2545,7 +2546,6 @@ CONTAINS
           CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE)
             !Update transient boundary conditions
             CALL NAVIER_STOKES_PRE_SOLVE_UPDATE_BOUNDARY_CONDITIONS(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
-!              CALL NavierStokes_CalculateBoundaryFlux(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
             NONLINEAR_SOLVER=>SOLVER%DYNAMIC_SOLVER%NONLINEAR_SOLVER%NONLINEAR_SOLVER
             IF(ASSOCIATED(NONLINEAR_SOLVER)) THEN
               !check for a linked CellML solver 
@@ -2557,6 +2557,33 @@ CONTAINS
             ELSE
               CALL FLAG_ERROR("Nonlinear solver is not associated.",ERR,ERROR,*999)
             ENDIF              
+
+          CASE(PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
+            solvers=>SOLVER%SOLVERS
+            CALL CONTROL_LOOP_CURRENT_TIMES_GET(CONTROL_LOOP,currentTime,timeIncrement,ERR,ERROR,*999)
+            SELECT CASE(SOLVER%GLOBAL_NUMBER)
+            CASE(1)
+              ! DAE solver- set time
+              CALL SOLVER_DAE_TIMES_SET(SOLVER,currentTime,currentTime + timeIncrement,ERR,ERROR,*999)
+            CASE(2)
+              ! 3D NSE solver - update boundary conditions if necessary
+              CALL NAVIER_STOKES_PRE_SOLVE_UPDATE_BOUNDARY_CONDITIONS(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
+              NONLINEAR_SOLVER=>SOLVER%DYNAMIC_SOLVER%NONLINEAR_SOLVER%NONLINEAR_SOLVER
+              IF(ASSOCIATED(NONLINEAR_SOLVER)) THEN
+                !check for a linked CellML Evaluator solver (case with evaluator solver and DAE)
+                CELLML_SOLVER=>NONLINEAR_SOLVER%NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
+                IF(ASSOCIATED(CELLML_SOLVER)) THEN
+                  ! Calculate the CellML equations
+                  CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                ENDIF
+              ELSE
+                CALL FLAG_ERROR("Nonlinear solver is not associated.",ERR,ERROR,*999)
+              ENDIF              
+            CASE DEFAULT
+              LOCAL_ERROR="The solver global number of "//TRIM(NUMBER_TO_VSTRING(SOLVER%GLOBAL_NUMBER,"*",ERR,ERROR))// &
+                & " is invalid for a coupled DAE Navier-Stokes problem."
+              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
 
           CASE(PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
             !Update any transient boundary conditions
@@ -2816,6 +2843,10 @@ CONTAINS
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
         PROBLEM%SUBTYPE=PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE
+      CASE(PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
+        PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
+        PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
+        PROBLEM%SUBTYPE=PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE
       CASE(PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
@@ -2905,430 +2936,42 @@ CONTAINS
 
     IF(ASSOCIATED(PROBLEM)) THEN
       SELECT CASE(PROBLEM%SUBTYPE)
-        !All steady state cases of Navier-Stokes
-        CASE(PROBLEM_STATIC_NAVIER_STOKES_SUBTYPE,PROBLEM_LAPLACE_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
-            CASE(PROBLEM_SETUP_INITIAL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Do nothing????
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Do nothing???
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CONTROL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Set up a simple control loop
-                  CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Finish the control loops
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVERS_TYPE)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Start the solvers creation
-                  CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
-                  !Set the solver to be a nonlinear solver
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the solvers
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  !Finish the solvers creation
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver equations
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE DEFAULT
-              LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-          END SELECT
-        !Transient cases and moving mesh
-        CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_PGM_NAVIER_STOKES_SUBTYPE, &
-          & PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-          & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
-            CASE(PROBLEM_SETUP_INITIAL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Do nothing????
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Do nothing???
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CONTROL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Set up a time control loop
-                  CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Finish the control loops
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVERS_TYPE)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Start the solvers creation
-                  CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
-                  !Set the solver to be a first order dynamic solver 
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-                  !setup CellML evaluator
-                  IF(PROBLEM%SUBTYPE==PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE .OR. &
-                   & PROBLEM%SUBTYPE==PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE) THEN
-                    !Create the CellML evaluator solver
-                    CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                    !Link the CellML evaluator solver to the solver
-                    CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,CELLML_SOLVER,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
-                  ENDIF
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the solvers
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  !Finish the solvers creation
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-                  & ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver equations
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+      !All steady state cases of Navier-Stokes
+      CASE(PROBLEM_STATIC_NAVIER_STOKES_SUBTYPE,PROBLEM_LAPLACE_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+          CASE(PROBLEM_SETUP_INITIAL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
               CASE(PROBLEM_SETUP_START_ACTION)
-                !Get the control loop
-                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                !Get the solver
-                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                !Get the CellML evaluator solver
-                CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                !Create the CellML equations
-                CALL CELLML_EQUATIONS_CREATE_START(CELLML_SOLVER,CELLML_EQUATIONS, &
-                  & ERR,ERROR,*999)
+                !Do nothing????
               CASE(PROBLEM_SETUP_FINISH_ACTION)
-                !Get the control loop
-                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                !Get the solver
-                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                !Get the CellML evaluator solver
-                CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                !Get the CellML equations for the CellML evaluator solver
-                CALL SOLVER_CELLML_EQUATIONS_GET(CELLML_SOLVER,CELLML_EQUATIONS,ERR,ERROR,*999)
-                !Finish the CellML equations creation
-                CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+                !Do nothing???
               CASE DEFAULT
                 LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                   & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                  & " is invalid for a CellML setup for a  transient Navier-Stokes equation."
+                  & " is invalid for a Navier-Stokes fluid."
                 CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE DEFAULT
-              LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a transient Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-          END SELECT
-        !1D Transient Navier-Stokes - Including 1D transient equations and riemann invariants
-        CASE(PROBLEM_1DTRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
-            CASE(PROBLEM_SETUP_INITIAL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Do nothing????
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Do nothing???
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a 1d transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CONTROL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Set up a time control loop
-                  CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Finish the control loops
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a 1d transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVERS_TYPE)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Start the solvers creation
-                  CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
-                  !Set the solver to be a nonlinear solver
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(BIF_SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_LIBRARY_TYPE_SET(BIF_SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
-                  !Set the solver to be a first order dynamic solver 
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
- !                 CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICHOLSON_SCHEME,ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-                  IF(PROBLEM%SUBTYPE==PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE) THEN
-                    !Create the CellML evaluator solver
-                    CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                    !Link the CellML evaluator solver to the solver
-                    CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,CELLML_SOLVER,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
-                  ENDIF
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the solvers
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  !Finish the solvers creation
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a 1d transient Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver 1
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(BIF_SOLVER,BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                  !Get the solver 2
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-                  & ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver equations
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(BIF_SOLVER,BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
-
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+            END SELECT
+          CASE(PROBLEM_SETUP_CONTROL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
               CASE(PROBLEM_SETUP_START_ACTION)
-                !Get the control loop
-                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                !Get the solver
-                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                ! The dynamic nonlinear 1D Navier-Stokes solver is solver2 (nonlinear bifurcation/characteristics solver is 1)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                !Get the CellML evaluator solver
-                CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                !Create the CellML equations
-                CALL CELLML_EQUATIONS_CREATE_START(CELLML_SOLVER,CELLML_EQUATIONS, &
-                  & ERR,ERROR,*999)
+                !Set up a simple control loop
+                CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
               CASE(PROBLEM_SETUP_FINISH_ACTION)
-                !Get the control loop
+                !Finish the control loops
                 CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
                 CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                !Get the solver
-                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                ! The dynamic nonlinear 1D Navier-Stokes solver is solver2 (nonlinear bifurcation/characteristics solver is 1)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                !Get the CellML evaluator solver
-                CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
-                !Get the CellML equations for the CellML evaluator solver
-                CALL SOLVER_CELLML_EQUATIONS_GET(CELLML_SOLVER,CELLML_EQUATIONS,ERR,ERROR,*999)
-                !Finish the CellML equations creation
-                CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
               CASE DEFAULT
                 LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                   & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                  & " is invalid for a CellML setup for a 1D Navier-Stokes equation."
+                  & " is invalid for a Navier-Stokes fluid."
                 CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE DEFAULT
-              LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a 1d transient Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-          END SELECT
-
-        !Quasi-static Navier-Stokes
-        CASE(PROBLEM_QUASISTATIC_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
-            CASE(PROBLEM_SETUP_INITIAL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Do nothing????
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Do nothing???
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a quasistatic Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CONTROL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Set up a time control loop
-                  CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Finish the control loops
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a quasistatic Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVERS_TYPE)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
               CASE(PROBLEM_SETUP_START_ACTION)
                 !Start the solvers creation
                 CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
@@ -3346,196 +2989,371 @@ CONTAINS
               CASE DEFAULT
                 LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                   & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                  & " is invalid for a quasistatic Navier-Stokes equation."
+                  & " is invalid for a Navier-Stokes fluid."
                 CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_QUASISTATIC,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver equations
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)             
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a quasistatic Navier-Stokes equation."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-                END SELECT
-            CASE DEFAULT
-              LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a quasistatic Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-          END SELECT
-        !Navier-Stokes ALE cases
-        CASE(PROBLEM_ALE_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
-            CASE(PROBLEM_SETUP_INITIAL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Do nothing????
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Do nothing????
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a ALE Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_CONTROL_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Set up a time control loop
-                  CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Finish the control loops
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)            
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a ALE Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVERS_TYPE)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Start the solvers creation
-                  CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
-                  !Set the first solver to be a linear solver for the Laplace mesh movement problem
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(MESH_SOLVER,SOLVER_LINEAR_TYPE,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_LIBRARY_TYPE_SET(MESH_SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
-                  !Set the solver to be a first order dynamic solver 
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-                  !Set solver defaults
-                  CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the solvers
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  !Finish the solvers creation
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a ALE Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-                CASE(PROBLEM_SETUP_START_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(MESH_SOLVER,MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_EQUATIONS_LINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  !Create the solver equations
-                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-                  & ERR,ERROR,*999)
-                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                CASE(PROBLEM_SETUP_FINISH_ACTION)
-                  !Get the control loop
-                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                  !Get the solver equations
-                  CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(MESH_SOLVER,MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)             
-
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                  !Finish the solver equations creation
-                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)             
-                CASE DEFAULT
-                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                    & " is invalid for a Navier-Stokes fluid."
-                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
-            CASE DEFAULT
-              LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a ALE Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-          END SELECT
-
-        CASE(PROBLEM_Coupled3D1D_NAVIER_STOKES_SUBTYPE)
-          SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver equations
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE DEFAULT
+            LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+      !Transient cases and moving mesh
+      CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_PGM_NAVIER_STOKES_SUBTYPE, &
+        & PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
+        & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
           CASE(PROBLEM_SETUP_INITIAL_TYPE)
             SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-            CASE(PROBLEM_SETUP_START_ACTION)
-              !Do nothing????
-            CASE(PROBLEM_SETUP_FINISH_ACTION)
-              !Do nothing???
-            CASE DEFAULT
-              LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a 3D-1D Coupled Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Do nothing????
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Do nothing???
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             END SELECT
           CASE(PROBLEM_SETUP_CONTROL_TYPE)
             SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Set up a time control loop
+                CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Finish the control loops
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Start the solvers creation
+                CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
+                !Set the solver to be a first order dynamic solver 
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                !Set solver defaults
+                CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+                CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                !setup CellML evaluator
+                IF(PROBLEM%SUBTYPE==PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE .OR. &
+                 & PROBLEM%SUBTYPE==PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE) THEN
+                  !Create the CellML evaluator solver
+                  CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+                  !Link the CellML evaluator solver to the solver
+                  CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,CELLML_SOLVER,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
+                ENDIF
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the solvers
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                !Finish the solvers creation
+                CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+                & ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver equations
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
             CASE(PROBLEM_SETUP_START_ACTION)
-              !Set up a time control loop
-              CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(CONTROL_LOOP,2,ERR,ERROR,*999)
-              ! the 3D sub-loop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_TYPE_SET(subLoop3D,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-              ! the 1D/Characteristics sub-loop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_TYPE_SET(subLoop1D,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
-!              CALL CONTROL_LOOP_TYPE_SET(subLoop1D,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
-            CASE(PROBLEM_SETUP_FINISH_ACTION)
-              !Finish the control loops
+              !Get the control loop
               CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
               CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+              !Get the solver
+              CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+              CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+              !Get the CellML evaluator solver
+              CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+              !Create the CellML equations
+              CALL CELLML_EQUATIONS_CREATE_START(CELLML_SOLVER,CELLML_EQUATIONS, &
+                & ERR,ERROR,*999)
+            CASE(PROBLEM_SETUP_FINISH_ACTION)
+              !Get the control loop
+              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+              !Get the solver
+              CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+              CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+              !Get the CellML evaluator solver
+              CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+              !Get the CellML equations for the CellML evaluator solver
+              CALL SOLVER_CELLML_EQUATIONS_GET(CELLML_SOLVER,CELLML_EQUATIONS,ERR,ERROR,*999)
+              !Finish the CellML equations creation
+              CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
             CASE DEFAULT
               LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                 & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
+                & " is invalid for a CellML setup for a  transient Navier-Stokes equation."
               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE DEFAULT
+            LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a transient Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+      !1D Transient Navier-Stokes - Including 1D transient equations and riemann invariants
+      CASE(PROBLEM_1DTRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+          CASE(PROBLEM_SETUP_INITIAL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Do nothing????
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Do nothing???
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a 1d transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_CONTROL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Set up a time control loop
+                CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Finish the control loops
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a 1d transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Start the solvers creation
+                CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
+                !Set the solver to be a nonlinear solver
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_TYPE_SET(BIF_SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
+                !Set solver defaults
+                CALL SOLVER_LIBRARY_TYPE_SET(BIF_SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
+                !Set the solver to be a first order dynamic solver 
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                !Set solver defaults
+                CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+!                 CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICHOLSON_SCHEME,ERR,ERROR,*999)
+                CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                IF(PROBLEM%SUBTYPE==PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE) THEN
+                  !Create the CellML evaluator solver
+                  CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+                  !Link the CellML evaluator solver to the solver
+                  CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,CELLML_SOLVER,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
+                ENDIF
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the solvers
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                !Finish the solvers creation
+                CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a 1d transient Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver 1
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(BIF_SOLVER,BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(BIF_SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                !Get the solver 2
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+                & ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver equations
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,BIF_SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(BIF_SOLVER,BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(BIF_SOLVER_EQUATIONS,ERR,ERROR,*999)
+
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+            CASE(PROBLEM_SETUP_START_ACTION)
+              !Get the control loop
+              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+              !Get the solver
+              CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+              ! The dynamic nonlinear 1D Navier-Stokes solver is solver2 (nonlinear bifurcation/characteristics solver is 1)
+              CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+              !Get the CellML evaluator solver
+              CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+              !Create the CellML equations
+              CALL CELLML_EQUATIONS_CREATE_START(CELLML_SOLVER,CELLML_EQUATIONS, &
+                & ERR,ERROR,*999)
+            CASE(PROBLEM_SETUP_FINISH_ACTION)
+              !Get the control loop
+              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+              !Get the solver
+              CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+              ! The dynamic nonlinear 1D Navier-Stokes solver is solver2 (nonlinear bifurcation/characteristics solver is 1)
+              CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+              !Get the CellML evaluator solver
+              CALL SOLVER_NEWTON_CELLML_SOLVER_GET(SOLVER,CELLML_SOLVER,ERR,ERROR,*999)
+              !Get the CellML equations for the CellML evaluator solver
+              CALL SOLVER_CELLML_EQUATIONS_GET(CELLML_SOLVER,CELLML_EQUATIONS,ERR,ERROR,*999)
+              !Finish the CellML equations creation
+              CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+            CASE DEFAULT
+              LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                & " is invalid for a CellML setup for a 1D Navier-Stokes equation."
+              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE DEFAULT
+            LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a 1d transient Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+
+      !Quasi-static Navier-Stokes
+      CASE(PROBLEM_QUASISTATIC_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+          CASE(PROBLEM_SETUP_INITIAL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Do nothing????
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Do nothing???
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a quasistatic Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_CONTROL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Set up a time control loop
+                CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Finish the control loops
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a quasistatic Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             END SELECT
           CASE(PROBLEM_SETUP_SOLVERS_TYPE)
             !Get the control loop
@@ -3543,125 +3361,471 @@ CONTAINS
             CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
             SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
             CASE(PROBLEM_SETUP_START_ACTION)
-              !Start the solvers creation for the 3D solver
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
-              CALL SOLVERS_CREATE_START(subLoop3D,solvers3D,ERR,ERROR,*999)
-              CALL SOLVERS_NUMBER_SET(solvers3D,1,ERR,ERROR,*999)
-              CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
-              CALL SOLVER_TYPE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-              CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-              CALL SOLVER_DYNAMIC_ORDER_SET(solverNavierStokes3D,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+              !Start the solvers creation
+              CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+              CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
+              !Set the solver to be a nonlinear solver
+              CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+              CALL SOLVER_TYPE_SET(SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
               !Set solver defaults
-              CALL SOLVER_DYNAMIC_DEGREE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-              CALL SOLVER_DYNAMIC_SCHEME_SET(solverNavierStokes3D,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
-              CALL SOLVER_LIBRARY_TYPE_SET(solverNavierStokes3D,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-              !Start the solvers creation for the 1D/Characteristic solver
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
-              CALL SOLVERS_CREATE_START(subLoop1D,solvers1D,ERR,ERROR,*999)
-              CALL SOLVERS_NUMBER_SET(solvers1D,2,ERR,ERROR,*999)
-              !Set the characteristic solver to be a nonlinear solver
-              CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
-              CALL SOLVER_TYPE_SET(solverCharacteristic,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
-              !Set solver defaults
-              CALL SOLVER_LIBRARY_TYPE_SET(solverCharacteristic,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
-              !Set the dynamic 1D Navier-Stokes solver to be a first order dynamic solver 
-              CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
-              CALL SOLVER_TYPE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-              CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-              CALL SOLVER_DYNAMIC_ORDER_SET(solverNavierStokes1D,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-              !Set solver defaults
-              CALL SOLVER_DYNAMIC_DEGREE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-              CALL SOLVER_LIBRARY_TYPE_SET(solverNavierStokes1D,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+              CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
             CASE(PROBLEM_SETUP_FINISH_ACTION)
-              !Get the 3D solver
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
+              !Get the solvers
+              CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
               !Finish the solvers creation
-              CALL SOLVERS_CREATE_FINISH(solvers3D,ERR,ERROR,*999)
-              !Get the 1D/Characteristic solver
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
-              !Finish the solvers creation
-              CALL SOLVERS_CREATE_FINISH(solvers1D,ERR,ERROR,*999)
+              CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
             CASE DEFAULT
               LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                 & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a 1d transient Navier-Stokes fluid."
+                & " is invalid for a quasistatic Navier-Stokes equation."
               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             END SELECT
           CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
             SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-            CASE(PROBLEM_SETUP_START_ACTION)
-              ! Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              ! Get the 3D subloop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
-              ! Get the 3D NSE solver and create the 3D NSE solver equations
-              CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_CREATE_START(solverNavierStokes3D,solverEquations3D,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquations3D,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquations3D,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-              & ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquations3D,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-              !Get the 1D/Characteristic solvers
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
-              ! Get the Characteristic solver
-              CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
-              !Create the solver equations
-              CALL SOLVER_EQUATIONS_CREATE_START(solverCharacteristic,solverEquationsCharacteristic,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquationsCharacteristic,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquationsCharacteristic,SOLVER_EQUATIONS_STATIC, &
-               & ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquationsCharacteristic,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-              !Get the 1D Transient NSE solver
-              CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
-              !Create the solver equations
-              CALL SOLVER_EQUATIONS_CREATE_START(solverNavierStokes1D,solverEquations1D,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquations1D,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquations1D,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-              & ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquations1D,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-            CASE(PROBLEM_SETUP_FINISH_ACTION)
-              !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              ! Get the 3D subloop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
-              CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
-              CALL SOLVER_SOLVER_EQUATIONS_GET(solverNavierStokes3D,solverEquations3D,ERR,ERROR,*999)
-              !Finish the 3D solver equations creation
-              CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquations3D,ERR,ERROR,*999)
-              ! Get the 1D/Characteristic subloop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
-              CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
-              !Finish the characteristic solver equations creation
-              CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
-              CALL SOLVER_SOLVER_EQUATIONS_GET(solverCharacteristic,solverEquationsCharacteristic,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquationsCharacteristic,ERR,ERROR,*999)
-              !Finish the 1D NSE solver equations creation
-              CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
-              CALL SOLVER_SOLVER_EQUATIONS_GET(solverNavierStokes1D,solverEquations1D,ERR,ERROR,*999)
-              CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquations1D,ERR,ERROR,*999)
-            CASE DEFAULT
-              LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_QUASISTATIC,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver equations
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)             
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a quasistatic Navier-Stokes equation."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+              END SELECT
+          CASE DEFAULT
+            LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a quasistatic Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+      !Navier-Stokes ALE cases
+      CASE(PROBLEM_ALE_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+          CASE(PROBLEM_SETUP_INITIAL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Do nothing????
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Do nothing????
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a ALE Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_CONTROL_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Set up a time control loop
+                CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Finish the control loops
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)            
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a ALE Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Start the solvers creation
+                CALL SOLVERS_CREATE_START(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
+                !Set the first solver to be a linear solver for the Laplace mesh movement problem
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_TYPE_SET(MESH_SOLVER,SOLVER_LINEAR_TYPE,ERR,ERROR,*999)
+                !Set solver defaults
+                CALL SOLVER_LIBRARY_TYPE_SET(MESH_SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
+                !Set the solver to be a first order dynamic solver 
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                !Set solver defaults
+                CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+                CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+                CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the solvers
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                !Finish the solvers creation
+                CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a ALE Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+          CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+            SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+              CASE(PROBLEM_SETUP_START_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(MESH_SOLVER,MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_EQUATIONS_LINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(MESH_SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                !Create the solver equations
+                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+                & ERR,ERROR,*999)
+                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+              CASE(PROBLEM_SETUP_FINISH_ACTION)
+                !Get the control loop
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                !Get the solver equations
+                CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+                CALL SOLVERS_SOLVER_GET(SOLVERS,1,MESH_SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(MESH_SOLVER,MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(MESH_SOLVER_EQUATIONS,ERR,ERROR,*999)             
+
+                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                !Finish the solver equations creation
+                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)             
+              CASE DEFAULT
+                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                  & " is invalid for a Navier-Stokes fluid."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             END SELECT
           CASE DEFAULT
             LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-              & " is invalid for a coupled 3d-1d Navier-Stokes fluid."
+              & " is invalid for a ALE Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+
+      CASE(PROBLEM_Coupled3D1D_NAVIER_STOKES_SUBTYPE)
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+        CASE(PROBLEM_SETUP_INITIAL_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Do nothing????
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Do nothing???
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a 3D-1D Coupled Navier-Stokes fluid."
             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
           END SELECT
-
+        CASE(PROBLEM_SETUP_CONTROL_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Set up a time control loop
+            CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(CONTROL_LOOP,2,ERR,ERROR,*999)
+            ! the 3D sub-loop
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_TYPE_SET(subLoop3D,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+            ! the 1D/Characteristics sub-loop
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_TYPE_SET(subLoop1D,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+!              CALL CONTROL_LOOP_TYPE_SET(subLoop1D,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Finish the control loops
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+          !Get the control loop
+          CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+          CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Start the solvers creation for the 3D solver
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
+            CALL SOLVERS_CREATE_START(subLoop3D,solvers3D,ERR,ERROR,*999)
+            CALL SOLVERS_NUMBER_SET(solvers3D,1,ERR,ERROR,*999)
+            CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
+            CALL SOLVER_TYPE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_ORDER_SET(solverNavierStokes3D,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+            !Set solver defaults
+            CALL SOLVER_DYNAMIC_DEGREE_SET(solverNavierStokes3D,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_SCHEME_SET(solverNavierStokes3D,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+            CALL SOLVER_LIBRARY_TYPE_SET(solverNavierStokes3D,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+            !Start the solvers creation for the 1D/Characteristic solver
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
+            CALL SOLVERS_CREATE_START(subLoop1D,solvers1D,ERR,ERROR,*999)
+            CALL SOLVERS_NUMBER_SET(solvers1D,2,ERR,ERROR,*999)
+            !Set the characteristic solver to be a nonlinear solver
+            CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
+            CALL SOLVER_TYPE_SET(solverCharacteristic,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
+            !Set solver defaults
+            CALL SOLVER_LIBRARY_TYPE_SET(solverCharacteristic,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
+            !Set the dynamic 1D Navier-Stokes solver to be a first order dynamic solver 
+            CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
+            CALL SOLVER_TYPE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_ORDER_SET(solverNavierStokes1D,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+            !Set solver defaults
+            CALL SOLVER_DYNAMIC_DEGREE_SET(solverNavierStokes1D,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+            CALL SOLVER_LIBRARY_TYPE_SET(solverNavierStokes1D,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Get the 3D solver
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
+            !Finish the solvers creation
+            CALL SOLVERS_CREATE_FINISH(solvers3D,ERR,ERROR,*999)
+            !Get the 1D/Characteristic solver
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
+            !Finish the solvers creation
+            CALL SOLVERS_CREATE_FINISH(solvers1D,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a 1d transient Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            ! Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            ! Get the 3D subloop
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
+            ! Get the 3D NSE solver and create the 3D NSE solver equations
+            CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_CREATE_START(solverNavierStokes3D,solverEquations3D,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquations3D,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquations3D,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+            & ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquations3D,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+            !Get the 1D/Characteristic solvers
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
+            ! Get the Characteristic solver
+            CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
+            !Create the solver equations
+            CALL SOLVER_EQUATIONS_CREATE_START(solverCharacteristic,solverEquationsCharacteristic,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquationsCharacteristic,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquationsCharacteristic,SOLVER_EQUATIONS_STATIC, &
+             & ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquationsCharacteristic,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+            !Get the 1D Transient NSE solver
+            CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
+            !Create the solver equations
+            CALL SOLVER_EQUATIONS_CREATE_START(solverNavierStokes1D,solverEquations1D,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(solverEquations1D,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(solverEquations1D,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+            & ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(solverEquations1D,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            ! Get the 3D subloop
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,subLoop3D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop3D,solvers3D,ERR,ERROR,*999)
+            CALL SOLVERS_SOLVER_GET(solvers3D,1,solverNavierStokes3D,ERR,ERROR,*999)
+            CALL SOLVER_SOLVER_EQUATIONS_GET(solverNavierStokes3D,solverEquations3D,ERR,ERROR,*999)
+            !Finish the 3D solver equations creation
+            CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquations3D,ERR,ERROR,*999)
+            ! Get the 1D/Characteristic subloop
+            CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,2,subLoop1D,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(subLoop1D,solvers1D,ERR,ERROR,*999)
+            !Finish the characteristic solver equations creation
+            CALL SOLVERS_SOLVER_GET(solvers1D,1,solverCharacteristic,ERR,ERROR,*999)
+            CALL SOLVER_SOLVER_EQUATIONS_GET(solverCharacteristic,solverEquationsCharacteristic,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquationsCharacteristic,ERR,ERROR,*999)
+            !Finish the 1D NSE solver equations creation
+            CALL SOLVERS_SOLVER_GET(solvers1D,2,solverNavierStokes1D,ERR,ERROR,*999)
+            CALL SOLVER_SOLVER_EQUATIONS_GET(solverNavierStokes1D,solverEquations1D,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_CREATE_FINISH(solverEquations1D,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
         CASE DEFAULT
-          LOCAL_ERROR="Problem subtype "//TRIM(NUMBER_TO_VSTRING(PROBLEM%SUBTYPE,"*",ERR,ERROR))// &
-            & " is not valid for a Navier-Stokes equation type of a fluid mechanics problem class."
+          LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+            & " is invalid for a coupled 3d-1d Navier-Stokes fluid."
           CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+
+      CASE(PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE) 
+        SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
+        CASE(PROBLEM_SETUP_INITIAL_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Do nothing????
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Do nothing???
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a 3D-1D Coupled Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_CONTROL_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Set up a time control loop
+            CALL CONTROL_LOOP_CREATE_START(PROBLEM,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_TYPE_SET(CONTROL_LOOP,PROBLEM_CONTROL_TIME_LOOP_TYPE,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_LABEL_SET(CONTROL_LOOP,"Time Loop",ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Finish the control loops
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_CREATE_FINISH(CONTROL_LOOP,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_SOLVERS_TYPE)
+          !Get the control loop
+          CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+          CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            CALL SOLVERS_CREATE_START(CONTROL_LOOP,solvers,ERR,ERROR,*999)
+            CALL SOLVERS_NUMBER_SET(solvers,2,ERR,ERROR,*999)
+            !Set the first solver to be a differential-algebraic equations solver
+            NULLIFY(solver)
+            CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
+            CALL SOLVER_TYPE_SET(solver,SOLVER_DAE_TYPE,ERR,ERROR,*999)
+            CALL SOLVER_LABEL_SET(solver,"DAE Solver",ERR,ERROR,*999)
+            !Set solver defaults
+            CALL SOLVER_LIBRARY_TYPE_SET(solver,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+            !Set the second solver to be a first order dynamic nonlinear solver (Navier-Stokes solver)
+            NULLIFY(solver)
+            CALL SOLVERS_SOLVER_GET(solvers,2,solver,ERR,ERROR,*999)
+            CALL SOLVER_TYPE_SET(solver,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(solver,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_ORDER_SET(solver,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+            CALL SOLVER_LABEL_SET(solver,"Nonlinear solver",ERR,ERROR,*999)
+            !Set solver defaults
+            CALL SOLVER_DYNAMIC_DEGREE_SET(solver,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+            CALL SOLVER_DYNAMIC_SCHEME_SET(solver,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+            CALL SOLVER_LIBRARY_TYPE_SET(solver,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Get the solvers
+            CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,SOLVERS,ERR,ERROR,*999)
+            !Finish the solvers creation
+            CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a 1d transient Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            ! Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,solvers,ERR,ERROR,*999)
+            !Get the 3D NSE solver
+            CALL SOLVERS_SOLVER_GET(solvers,2,solver,ERR,ERROR,*999)
+            !Create the solver equations for the second solver
+            CALL SOLVER_EQUATIONS_CREATE_START(solver,SOLVER_EQUATIONS,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+            & ERR,ERROR,*999)
+            CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,solvers,ERR,ERROR,*999)
+            !Get the solver equations for the second (3D nonlinear dynamic NSE) solver
+            CALL SOLVERS_SOLVER_GET(solvers,2,solver,ERR,ERROR,*999)
+            CALL SOLVER_SOLVER_EQUATIONS_GET(solver,SOLVER_EQUATIONS,ERR,ERROR,*999)
+            !Finish the solver equations creation
+            CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)             
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a coupled 3D-1D Navier-Stokes fluid."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
+          SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+          CASE(PROBLEM_SETUP_START_ACTION)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,solvers,ERR,ERROR,*999)
+            !Create the CellML equations for the first DAE solver
+            CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
+            CALL CELLML_EQUATIONS_CREATE_START(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+          CASE(PROBLEM_SETUP_FINISH_ACTION)
+            !Get the control loop
+            CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+            CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+            CALL CONTROL_LOOP_SOLVERS_GET(CONTROL_LOOP,solvers,ERR,ERROR,*999)
+            !Get the DAE solver
+            CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
+            !Get the CellML equations for the first DAE solver
+            CALL SOLVER_CELLML_EQUATIONS_GET(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+            !Finish the CellML equations creation
+            CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a CellML setup for a  transient Navier-Stokes equation."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
+        CASE DEFAULT
+          LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+            & " is invalid for a transient Navier-Stokes fluid."
+          CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        END SELECT
+
+      CASE DEFAULT
+        LOCAL_ERROR="Problem subtype "//TRIM(NUMBER_TO_VSTRING(PROBLEM%SUBTYPE,"*",ERR,ERROR))// &
+          & " is not valid for a Navier-Stokes equation type of a fluid mechanics problem class."
+        CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
       END SELECT
     ELSE
       CALL FLAG_ERROR("Problem is not associated.",ERR,ERROR,*999)
@@ -6051,11 +6215,25 @@ CONTAINS
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
           CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE)
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
+
+          CASE(PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
+            SELECT CASE(SOLVER%GLOBAL_NUMBER)
+            CASE(1)
+              ! DAE solver- do nothing
+            CASE(2)
+              ! 3D NSE solver - calculated fluxes and output data if necessary
+              CALL NavierStokes_CalculateBoundaryFlux(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
+              CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
+            CASE DEFAULT
+              LOCAL_ERROR="The solver global number of "//TRIM(NUMBER_TO_VSTRING(SOLVER%GLOBAL_NUMBER,"*",ERR,ERROR))// &
+                & " is invalid for a Gudunov split monodomain problem."
+              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
+
           CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE,PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
             CALL NavierStokes_CalculateBoundaryFlux(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(CONTROL_LOOP,SOLVER,ERR,ERROR,*999)
             equationsSet=>SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
-
             IF(ASSOCIATED(equationsSet)) THEN
               IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
                 ! Write out analytic analysis values
@@ -6186,7 +6364,7 @@ CONTAINS
             ! do nothing ???
           CASE(PROBLEM_STATIC_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
             & PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-            & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+            & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
             SOLVER_EQUATIONS=>SOLVER%SOLVER_EQUATIONS
             IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
               SOLVER_MAPPING=>SOLVER_EQUATIONS%SOLVER_MAPPING
@@ -7393,7 +7571,7 @@ CONTAINS
             CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-              &  PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+              &  PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_1DTRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
@@ -7666,7 +7844,7 @@ CONTAINS
             CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-              &  PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+              &  PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_1DTRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
@@ -7817,7 +7995,8 @@ CONTAINS
             CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_ALE_NAVIER_STOKES_SUBTYPE,PROBLEM_PGM_NAVIER_STOKES_SUBTYPE, &
               & PROBLEM_QUASISTATIC_NAVIER_STOKES_SUBTYPE, &
               & PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE,PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-              & PROBLEM_Coupled3D1D_NAVIER_STOKES_SUBTYPE,PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+              & PROBLEM_Coupled3D1D_NAVIER_STOKES_SUBTYPE,PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE, &
+              & PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
               CALL CONTROL_LOOP_CURRENT_TIMES_GET(CONTROL_LOOP,CURRENT_TIME,TIME_INCREMENT,ERR,ERROR,*999)
               SOLVER_EQUATIONS=>SOLVER%SOLVER_EQUATIONS
               IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
@@ -7901,6 +8080,7 @@ CONTAINS
                   ENDDO
                 ENDIF
               ENDIF
+
             CASE(PROBLEM_1DTRANSIENT_NAVIER_STOKES_SUBTYPE,PROBLEM_Coupled1D0D_NAVIER_STOKES_SUBTYPE)
               CALL CONTROL_LOOP_CURRENT_TIMES_GET(CONTROL_LOOP,CURRENT_TIME,TIME_INCREMENT,ERR,ERROR,*999)
               SOLVER_EQUATIONS=>SOLVER%SOLVER_EQUATIONS
@@ -10187,7 +10367,8 @@ CONTAINS
         IF(ASSOCIATED(controlLoop%PROBLEM)) THEN
           SELECT CASE(controlLoop%PROBLEM%SUBTYPE)
           CASE(PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE, &
-             & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE)
+             & PROBLEM_Constitutive_NAVIER_STOKES_SUBTYPE, &
+             & PROBLEM_Coupled3DDAE_NAVIER_STOKES_SUBTYPE)
             solverEquations=>solver%SOLVER_EQUATIONS
             IF(ASSOCIATED(solverEquations)) THEN
               solverMapping=>solverEquations%SOLVER_MAPPING

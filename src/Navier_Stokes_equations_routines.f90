@@ -10639,7 +10639,7 @@ CONTAINS
 
                 correctFace=.TRUE.
                 DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                  IF (ABS(unitNormal(componentIdx)-elementNormal(componentIdx)) > 0.000001_DP) correctFace=.FALSE.
+                  IF (ABS(unitNormal(componentIdx)-elementNormal(componentIdx)) > 0.1_DP) correctFace=.FALSE.
                 ENDDO
                 IF (correctFace) THEN
 

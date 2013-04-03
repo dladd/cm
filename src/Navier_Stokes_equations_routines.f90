@@ -1584,6 +1584,21 @@ CONTAINS
                             !Set analytic function type
                             EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_SETUP%ANALYTIC_FUNCTION_TYPE
                             NUMBER_OF_ANALYTIC_COMPONENTS=4
+                          CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
+                            !Set analtyic function type
+                            EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid
+                            !Check that domain is 3D
+                            IF(NUMBER_OF_DIMENSIONS/=3) THEN
+                              LOCAL_ERROR="The number of geometric dimensions of "// &
+                                & TRIM(NUMBER_TO_VSTRING(NUMBER_OF_DIMENSIONS,"*",ERR,ERROR))// &
+                                & " is invalid. The analytic function type of "// &
+                                & TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SETUP%ANALYTIC_FUNCTION_TYPE,"*",ERR,ERROR))// &
+                                & " requires that there be 2 geometric dimensions."
+                              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                            ENDIF
+                            !Set analytic function type
+                            EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_SETUP%ANALYTIC_FUNCTION_TYPE
+                            NUMBER_OF_ANALYTIC_COMPONENTS=6
                           CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN)
                             !Set analtyic function type
                             EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN
@@ -1769,6 +1784,18 @@ CONTAINS
                           & FIELD_VALUES_SET_TYPE,3,0.0_DP,ERR,ERROR,*999)
                         CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
                           & FIELD_VALUES_SET_TYPE,4,0.0_DP,ERR,ERROR,*999)
+                      CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
+                        !Default the analytic parameter values to 0
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,1,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,2,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,3,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,4,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,5,0.0_DP,ERR,ERROR,*999)
                       CASE DEFAULT
                         LOCAL_ERROR="The analytic function type of "// &
                           & TRIM(NUMBER_TO_VSTRING(EQUATIONS_ANALYTIC%ANALYTIC_FUNCTION_TYPE,"*",ERR,ERROR))// &
@@ -6236,22 +6263,26 @@ CONTAINS
             equationsSet=>SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
             IF(ASSOCIATED(equationsSet)) THEN
               IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
-                ! Write out analytic analysis values
-                currentLoopIteration=CONTROL_LOOP%TIME_LOOP%ITERATION_NUMBER
-                outputIteration=CONTROL_LOOP%TIME_LOOP%OUTPUT_NUMBER
-                IF(outputIteration/=0) THEN
-                  CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"Now export analytic analysis... ",ERR,ERROR,*999)
-                  IF(CONTROL_LOOP%TIME_LOOP%CURRENT_TIME<=CONTROL_LOOP%TIME_LOOP%STOP_TIME) THEN
-                    IF(currentLoopIteration<10) THEN
-                      WRITE(outputFilename,'("Analytic_000",I0)') currentLoopIteration
-                    ELSE IF(currentLoopIteration<100) THEN
-                      WRITE(outputFilename,'("Analytic_00",I0)') currentLoopIteration
-                    ELSE IF(currentLoopIteration<1000) THEN
-                      WRITE(outputFilename,'("Analytic_0",I0)') currentLoopIteration
-                    ELSE IF(currentLoopIteration<10000) THEN
-                      WRITE(outputFilename,'("Analytic_",I0)') currentLoopIteration
-                    END IF
-                    CALL ANALYTIC_ANALYSIS_OUTPUT(equationsSet%DEPENDENT%DEPENDENT_FIELD,outputFilename,ERR,ERROR,*999)
+                IF(equationsSet%ANALYTIC%ANALYTIC_FUNCTION_TYPE == EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid) THEN
+                   ! Do nothing
+                ELSE
+                  ! Write out analytic analysis values
+                  currentLoopIteration=CONTROL_LOOP%TIME_LOOP%ITERATION_NUMBER
+                  outputIteration=CONTROL_LOOP%TIME_LOOP%OUTPUT_NUMBER
+                  IF(outputIteration/=0) THEN
+                    CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"Now export analytic analysis... ",ERR,ERROR,*999)
+                    IF(CONTROL_LOOP%TIME_LOOP%CURRENT_TIME<=CONTROL_LOOP%TIME_LOOP%STOP_TIME) THEN
+                      IF(currentLoopIteration<10) THEN
+                        WRITE(outputFilename,'("Analytic_000",I0)') currentLoopIteration
+                      ELSE IF(currentLoopIteration<100) THEN
+                        WRITE(outputFilename,'("Analytic_00",I0)') currentLoopIteration
+                      ELSE IF(currentLoopIteration<1000) THEN
+                        WRITE(outputFilename,'("Analytic_0",I0)') currentLoopIteration
+                      ELSE IF(currentLoopIteration<10000) THEN
+                        WRITE(outputFilename,'("Analytic_",I0)') currentLoopIteration
+                      END IF
+                      CALL ANALYTIC_ANALYSIS_OUTPUT(equationsSet%DEPENDENT%DEPENDENT_FIELD,outputFilename,ERR,ERROR,*999)
+                    ENDIF
                   ENDIF
                 ENDIF
               ENDIF
@@ -6373,7 +6404,16 @@ CONTAINS
                 EQUATIONS_SET=>EQUATIONS%EQUATIONS_SET
                 IF(ASSOCIATED(EQUATIONS_SET%ANALYTIC)) THEN
                   !Standard analytic functions
-                  IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN.OR. &
+                  IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid) THEN
+                    ! Update analytic time value with current time
+                    EQUATIONS_SET%ANALYTIC%ANALYTIC_TIME=CURRENT_TIME
+                    ! Calculate analytic values
+                    BOUNDARY_CONDITIONS=>SOLVER_EQUATIONS%BOUNDARY_CONDITIONS
+                    IF(ASSOCIATED(BOUNDARY_CONDITIONS)) THEN
+                      CALL NavierStokes_AnalyticCalculate(EQUATIONS_SET,BOUNDARY_CONDITIONS,ERR,ERROR,*999)
+                    ENDIF
+                  ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== &
+                   & EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN.OR. &
                    & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_POISEUILLE) THEN
                     IF(ASSOCIATED(EQUATIONS_SET)) THEN
                       IF(ASSOCIATED(EQUATIONS_SET%ANALYTIC)) THEN
@@ -8184,9 +8224,11 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: componentIdx,derivativeIdx,dimensionIdx,local_ny,nodeIdx,numberOfDimensions,variableIdx,variableType,I,J,K
     INTEGER(INTG) :: numberOfNodesXiCoord(3),elementIdx,en_idx,boundaryCount,analyticFunctionType,globalDerivativeIndex,versionIdx
+    INTEGER(INTG) :: boundaryConditionsCheckVariable
     REAL(DP) :: VALUE,X(3),xiCoordinates(3),initialValue
     REAL(DP) :: T_COORDINATES(20,3)
     REAL(DP), POINTER :: analyticParameters(:),geometricParameters(:),materialsParameters(:)
+    TYPE(BOUNDARY_CONDITIONS_VARIABLE_TYPE), POINTER :: boundaryConditionsVariable
     TYPE(DOMAIN_TYPE), POINTER :: domain
     TYPE(DOMAIN_NODES_TYPE), POINTER :: domainNodes
     TYPE(FIELD_TYPE), POINTER :: analyticField,dependentField,geometricField,materialsField
@@ -8333,7 +8375,8 @@ CONTAINS
 
                       ! --- Set boundary conditions with analytic value ---
                       CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_WAVEFORM1, &
-                        &  EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN)
+                        &  EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN, &
+                        &  EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
                         ! Get geometric position info for this node
                         DO dimensionIdx=1,numberOfDimensions
                           local_ny=geometricVariable%COMPONENTS(dimensionIdx)%PARAM_TO_DOF_MAP%NODE_PARAM2DOF_MAP% &
@@ -8344,27 +8387,37 @@ CONTAINS
                         DO derivativeIdx=1,domainNodes%NODES(nodeIdx)%NUMBER_OF_DERIVATIVES
                           globalDerivativeIndex=domainNodes%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)% &
                             & GLOBAL_DERIVATIVE_INDEX
-                          CALL NAVIER_STOKES_ANALYTIC_FUNCTIONS_EVALUATE(equationsSet%SUBTYPE, & 
-                            & analyticFunctionType,X,TANGENTS,NORMAL,TIME,variableType,globalDerivativeIndex,componentIdx, &
-                            & numberOfDimensions,fieldVariable%NUMBER_OF_COMPONENTS,analyticParameters, &
-                            & materialsParameters,VALUE,err,error,*999)
-                          DO versionIdx=1,domainNodes%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%NUMBER_OF_VERSIONS
-                            local_ny=fieldVariable%COMPONENTS(componentIdx)%PARAM_TO_DOF_MAP% &
-                              & NODE_PARAM2DOF_MAP%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%VERSIONS(versionIdx)
-                            CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
-                              & FIELD_ANALYTIC_VALUES_SET_TYPE,local_ny,VALUE,err,error,*999)
-                            IF(variableType==FIELD_U_VARIABLE_TYPE) THEN
-                              IF(domainNodes%NODES(nodeIdx)%BOUNDARY_NODE) THEN
-                                !If we are a boundary node then set the analytic value on the boundary
-                                CALL BOUNDARY_CONDITIONS_SET_LOCAL_DOF(boundaryConditions,dependentField,variableType, &
-                                  & local_ny,BOUNDARY_CONDITION_FIXED,VALUE,err,error,*999)
-                              ELSE
-                                !Set the initial condition.
-                                CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
-                                  & FIELD_VALUES_SET_TYPE,local_ny,initialValue,err,error,*999)
+                          IF(componentIdx<=numberOfDimensions) THEN
+                            CALL NAVIER_STOKES_ANALYTIC_FUNCTIONS_EVALUATE(equationsSet%SUBTYPE, & 
+                              & analyticFunctionType,X,TANGENTS,NORMAL,TIME,variableType,globalDerivativeIndex,componentIdx, &
+                              & numberOfDimensions,fieldVariable%NUMBER_OF_COMPONENTS,analyticParameters, &
+                              & materialsParameters,VALUE,err,error,*999)
+                            DO versionIdx=1,domainNodes%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%NUMBER_OF_VERSIONS
+                              local_ny=fieldVariable%COMPONENTS(componentIdx)%PARAM_TO_DOF_MAP% &
+                                & NODE_PARAM2DOF_MAP%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%VERSIONS(versionIdx)
+                              CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                                & FIELD_ANALYTIC_VALUES_SET_TYPE,local_ny,VALUE,err,error,*999)
+                              IF(variableType==FIELD_U_VARIABLE_TYPE) THEN
+                                IF(domainNodes%NODES(nodeIdx)%BOUNDARY_NODE) THEN
+                                  CALL BOUNDARY_CONDITIONS_VARIABLE_GET(boundaryConditions,fieldVariable, &
+                                   & boundaryConditionsVariable,err,error,*999)
+                                  IF(ASSOCIATED(boundaryConditionsVariable)) THEN
+                                    boundaryConditionsCheckVariable=boundaryConditionsVariable% &
+                                     & CONDITION_TYPES(local_ny)
+                                    IF(boundaryConditionsCheckVariable==BOUNDARY_CONDITION_FIXED_INLET) THEN
+                                      !If we are a boundary node then set the analytic value on the boundary
+                                      CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                                        & FIELD_VALUES_SET_TYPE,local_ny,VALUE,err,error,*999)
+                                    ENDIF
+                                  ENDIF
+                                ! ELSE
+                                !   !Set the initial condition.
+                                !   CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                                !     & FIELD_VALUES_SET_TYPE,local_ny,initialValue,err,error,*999)
+                                ENDIF
                               ENDIF
-                            ENDIF
-                          ENDDO !versionIdx
+                            ENDDO !versionIdx
+                          ENDIF
                         ENDDO !derivativeIdx
 
                       ! --- Legacy unit shape testing types ---
@@ -8646,6 +8699,7 @@ CONTAINS
     REAL(DP) :: L_PARAM,H_PARAM,U_PARAM,P_PARAM,MU_PARAM,NU_PARAM,RHO_PARAM,INTERNAL_TIME,CURRENT_TIME,K_PARAM
     REAL(DP) :: period
     REAL(DP) :: n,K,R,position,dPdX,length
+    REAL(DP) :: boundaryNormal(3),amplitude,offset
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
     CALL ENTERS("NAVIER_STOKES_ANALYTIC_FUNCTIONS_EVALUATE",ERR,ERROR,*999)
@@ -8904,6 +8958,47 @@ CONTAINS
              ELSE
                CALL FLAG_ERROR("Incorrect component specification for waveform 1",ERR,ERROR,*999)
              ENDIF
+           CASE DEFAULT
+             LOCAL_ERROR="The global derivative index of "//TRIM(NUMBER_TO_VSTRING( &
+               & GLOBAL_DERIV_INDEX,"*",ERR,ERROR))// " is invalid."
+             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+           END SELECT
+         CASE(FIELD_DELUDELN_VARIABLE_TYPE) 
+           SELECT CASE(GLOBAL_DERIV_INDEX)
+           CASE(NO_GLOBAL_DERIV)
+             VALUE= 0.0_DP
+           CASE DEFAULT
+             LOCAL_ERROR="The global derivative index of "//TRIM(NUMBER_TO_VSTRING( &
+               & GLOBAL_DERIV_INDEX,"*",ERR,ERROR))// " is invalid."
+             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+           END SELECT
+         CASE DEFAULT
+           LOCAL_ERROR="The variable type of "//TRIM(NUMBER_TO_VSTRING(VARIABLE_TYPE,"*",ERR,ERROR))// &
+             & " is invalid."
+           CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+         END SELECT
+       CASE DEFAULT
+         LOCAL_ERROR="Waveform type 1 for "//TRIM(NUMBER_TO_VSTRING(NUMBER_OF_DIMENSIONS,"*",ERR,ERROR))// &
+           & " dimension problem has not yet been implemented."
+         CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+       END SELECT
+
+     CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
+       ! Returns a sinusoidal value for boundary nodes
+       SELECT CASE(NUMBER_OF_DIMENSIONS)
+       CASE(3)
+         SELECT CASE(VARIABLE_TYPE)
+         CASE(FIELD_U_VARIABLE_TYPE)
+           boundaryNormal(1) = ANALYTIC_PARAMETERS(1) ! normal vector in x
+           boundaryNormal(2) = ANALYTIC_PARAMETERS(2) ! normal vector in y
+           boundaryNormal(3) = ANALYTIC_PARAMETERS(3) ! normal vector in z
+           period = ANALYTIC_PARAMETERS(4) ! time period for waveform
+           amplitude = ANALYTIC_PARAMETERS(5) ! amplitude of sine wave
+           offset = ANALYTIC_PARAMETERS(6) ! constant value
+           SELECT CASE(GLOBAL_DERIV_INDEX)
+           CASE(NO_GLOBAL_DERIV)
+             !Set analytic value for w
+             VALUE= boundaryNormal(componentNumber)*(offset + amplitude*sin(2*pi*(CURRENT_TIME/(period))))
            CASE DEFAULT
              LOCAL_ERROR="The global derivative index of "//TRIM(NUMBER_TO_VSTRING( &
                & GLOBAL_DERIV_INDEX,"*",ERR,ERROR))// " is invalid."
@@ -10747,93 +10842,95 @@ CONTAINS
       !   END IF ! computational node check
       ! ENDDO !elementIdx                  
 
+      IF(equationsSet%SUBTYPE==EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE) THEN
 
+        ! Loop over elements again to allocate flux terms to boundary nodes
+        decomposition=>dependentVariable%FIELD%DECOMPOSITION
+        DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
+          !Check computational node for elementIdx
 
-      ! ! Loop over elements again to allocate flux terms to boundary nodes
-      ! decomposition=>dependentVariable%FIELD%DECOMPOSITION
-      ! DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
-      !   !Check computational node for elementIdx
+          userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
 
-      !   userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
+          elementExists=.FALSE.
+          ghostElement=.TRUE.
+          CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &
+            & userElementNumber,elementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
+          IF(elementExists .AND. .NOT. ghostElement ) THEN
 
-      !   elementExists=.FALSE.
-      !   ghostElement=.TRUE.
-      !   CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &
-      !     & userElementNumber,elementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
-      !   IF(elementExists .AND. .NOT. ghostElement ) THEN
+            CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+             & elementIdx,5,elementNormal(1),err,error,*999)
+            CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+             & elementIdx,6,elementNormal(2),err,error,*999)
+            CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+             & elementIdx,7,elementNormal(3),err,error,*999)
+            CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+             & elementIdx,8,boundaryValue,err,error,*999)
 
-      !     CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !      & elementIdx,5,elementNormal(1),err,error,*999)
-      !     CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !      & elementIdx,6,elementNormal(2),err,error,*999)
-      !     CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !      & elementIdx,7,elementNormal(3),err,error,*999)
-      !     CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !      & elementIdx,8,boundaryValue,err,error,*999)
+            !Check if boundary element is a multidomain boundary element
+            boundaryID=NINT(boundaryValue)
+            IF(boundaryID>1) THEN
+              meshComponentNumber=2
+              decompElement=>DECOMPOSITION%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)
+              elementNumber=decompElement%USER_NUMBER
+              dependentBasis2=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS% &
+                & ELEMENTS(elementIdx)%BASIS
+              DO faceIdx=1,dependentBasis2%NUMBER_OF_LOCAL_FACES
+                !Get the face normal and quadrature information
+                IF(ALLOCATED(decompElement%ELEMENT_FACES)) THEN
+                  faceNumber=decompElement%ELEMENT_FACES(faceIdx)
+                ELSE
+                  CALL FLAG_ERROR("Decomposition element faces is not allocated.",err,error,*999)
+                END IF
+                face=>decomposition%TOPOLOGY%FACES%FACES(faceNumber)
+                IF(.NOT.(face%BOUNDARY_FACE)) CYCLE
+                !CellML model is evaluated over the pressure space basis
+                meshComponentNumber=2
+                faceBasis=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%FACES%FACES(faceNumber)%BASIS
+                faceQuadratureScheme=>faceBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
 
-      !     !Check if boundary element is a multidomain boundary element
-      !     boundaryID=NINT(boundaryValue)
-      !     IF(boundaryID>1) THEN
-      !       meshComponentNumber=2
-      !       decompElement=>DECOMPOSITION%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)
-      !       elementNumber=decompElement%USER_NUMBER
-      !       dependentBasis2=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS% &
-      !         & ELEMENTS(elementIdx)%BASIS
-      !       DO faceIdx=1,dependentBasis2%NUMBER_OF_LOCAL_FACES
-      !         !Get the face normal and quadrature information
-      !         IF(ALLOCATED(decompElement%ELEMENT_FACES)) THEN
-      !           faceNumber=decompElement%ELEMENT_FACES(faceIdx)
-      !         ELSE
-      !           CALL FLAG_ERROR("Decomposition element faces is not allocated.",err,error,*999)
-      !         END IF
-      !         face=>decomposition%TOPOLOGY%FACES%FACES(faceNumber)
-      !         IF(.NOT.(face%BOUNDARY_FACE)) CYCLE
-      !         !CellML model is evaluated over the pressure space basis
-      !         meshComponentNumber=2
-      !         faceBasis=>decomposition%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%FACES%FACES(faceNumber)%BASIS
-      !         faceQuadratureScheme=>faceBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
+                SELECT CASE(dependentBasis2%TYPE)
+                CASE(BASIS_LAGRANGE_HERMITE_TP_TYPE)
+                  normalComponentIdx=ABS(face%XI_DIRECTION)
+                  pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
+                  CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_VOLUME_TYPE,pointMetrics,err,error,*999)
+                  DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                    normalProjection=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
+                    IF(face%XI_DIRECTION<0) THEN
+                      normalProjection=-normalProjection
+                    END IF
+                    faceNormal(componentIdx)=normalProjection
+                  END DO !componentIdx
+                  unitNormal=faceNormal/L2NORM(faceNormal)
+                CASE(BASIS_SIMPLEX_TYPE)
+                  !still have faceNormal/unitNormal
+                CASE DEFAULT
+                  LOCAL_ERROR="Face integration for basis type "//TRIM(NUMBER_TO_VSTRING(dependentBasis2%TYPE,"*",ERR,ERROR))// &
+                    & " is not yet implemented for Navier-Stokes."
+                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                END SELECT
 
-      !         SELECT CASE(dependentBasis2%TYPE)
-      !         CASE(BASIS_LAGRANGE_HERMITE_TP_TYPE)
-      !           normalComponentIdx=ABS(face%XI_DIRECTION)
-      !           pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
-      !           CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_VOLUME_TYPE,pointMetrics,err,error,*999)
-      !           DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-      !             normalProjection=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
-      !             IF(face%XI_DIRECTION<0) THEN
-      !               normalProjection=-normalProjection
-      !             END IF
-      !             faceNormal(componentIdx)=normalProjection
-      !           END DO !componentIdx
-      !           unitNormal=faceNormal/L2NORM(faceNormal)
-      !         CASE(BASIS_SIMPLEX_TYPE)
-      !           !still have faceNormal/unitNormal
-      !         CASE DEFAULT
-      !           LOCAL_ERROR="Face integration for basis type "//TRIM(NUMBER_TO_VSTRING(dependentBasis2%TYPE,"*",ERR,ERROR))// &
-      !             & " is not yet implemented for Navier-Stokes."
-      !           CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-      !         END SELECT
+                normalDifference=L2NORM(elementNormal-unitNormal)
+                normalTolerance=0.1_DP
+                IF(normalDifference>normalTolerance) CYCLE
 
-      !         normalDifference=L2NORM(elementNormal-unitNormal)
-      !         normalTolerance=0.1_DP
-      !         IF(normalDifference>normalTolerance) CYCLE
+                DO faceNodeIdx=1,faceBasis%NUMBER_OF_NODES
+                  elementNodeIdx=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx,faceIdx)
+                  DO faceNodeDerivativeIdx=1,faceBasis%NUMBER_OF_DERIVATIVES(faceNodeIdx)
+                    nodeNumber=decomposition%DOMAIN(meshComponentNumber)%PTR% &
+                     & TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%ELEMENT_NODES(elementNodeIdx)
+                    versionNumber=1
+                    !Store node-based boundary flux
+                    CALL FIELD_PARAMETER_SET_UPDATE_NODE(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                      & versionNumber,faceNodeDerivativeIdx,nodeNumber,13,boundaryFlux(boundaryID),err,error,*999) 
+                  END DO !nodeDerivativeIdx
+                END DO !faceNodeIdx
 
-      !         DO faceNodeIdx=1,faceBasis%NUMBER_OF_NODES
-      !           elementNodeIdx=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx,faceIdx)
-      !           DO faceNodeDerivativeIdx=1,faceBasis%NUMBER_OF_DERIVATIVES(faceNodeIdx)
-      !             nodeNumber=decomposition%DOMAIN(meshComponentNumber)%PTR% &
-      !              & TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%ELEMENT_NODES(elementNodeIdx)
-      !             versionNumber=1
-      !             !Store node-based boundary flux
-      !             CALL FIELD_PARAMETER_SET_UPDATE_NODE(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !               & versionNumber,faceNodeDerivativeIdx,nodeNumber,13,boundaryFlux(boundaryID),err,error,*999) 
-      !           END DO !nodeDerivativeIdx
-      !         END DO !faceNodeIdx
+              END DO !faceIdx
+            END IF !boundaryIdentifier
+          END IF ! computational node check
+        ENDDO !elementIdx
 
-      !       END DO !faceIdx
-      !     END IF !boundaryIdentifier
-      !   END IF ! computational node check
-      ! ENDDO !elementIdx
+      ENDIF
 
     CASE DEFAULT
       LOCAL_ERROR="Boundary flux calcluation for equations type "//TRIM(NUMBER_TO_VSTRING(equationsSet%SUBTYPE,"*",ERR,ERROR))// &
@@ -11736,7 +11833,7 @@ CONTAINS
               secondInvariant= - rateOfDeformation(1,2)**2.0_DP - &
                    & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
 
-              IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
+!              IF(ASSOCIATED(equationsSet%ANALYTIC)) THEN
                 ! For power-law based constitutive models, this will keep the viscosity from exploding as shearRate --> 0
                 IF(secondInvariant > -1.0E-30_DP) THEN
                   CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE, &
@@ -11749,15 +11846,15 @@ CONTAINS
                 ELSE
                   shearRate=SQRT(-4.0_DP*secondInvariant)
                   componentIdx=1
-                  CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
-                    & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
+!                  CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
+!                    & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
                 ENDIF
-              ELSE
+!              ELSE
                 shearRate=SQRT(-4.0_DP*secondInvariant)
                 componentIdx=1
                 CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE, &
                   & FIELD_VALUES_SET_TYPE,userElementNumber,gaussIdx,componentIdx,shearRate,ERR,ERROR,*999)
-              ENDIF
+!              ENDIF
 
             END DO !gaussIdx
           ENDIF ! check for ghost element

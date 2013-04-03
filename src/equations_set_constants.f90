@@ -455,6 +455,7 @@ MODULE EQUATIONS_SET_CONSTANTS
   INTEGER(INTG), PARAMETER :: EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN=13 !< 2D dynamic nonlinear Taylor-Green vortex decay
   INTEGER(INTG), PARAMETER :: EQUATIONS_SET_NAVIER_STOKES_EQUATION_WAVEFORM1=14 !< A fourier decomposed flow waveform for boundary conditions
   INTEGER(INTG), PARAMETER :: EQUATIONS_SET_NAVIER_STOKES_EQUATION_PowerLaw=15 !< fully developed flow through a pipe using a power-law constitutive model for viscosity
+  INTEGER(INTG), PARAMETER :: EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid=16 !< A sinusoidal flow waveform
   !>@}
   !> \addtogroup EQUATIONS_SET_CONSTANTS_DarcyAnalyticFunctionTypes EQUATIONS_SET_CONSTANTS:DarcyAnalyticFunctionTypes
   !> \brief The analytic function types for a Darcy equation

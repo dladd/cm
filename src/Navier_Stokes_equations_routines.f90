@@ -10419,6 +10419,7 @@ CONTAINS
     INTEGER(INTG) :: faceParameterIdx, elementDofIdx, normalComponentIdx, xiCoordinateComponentIdx
     INTEGER(INTG) :: dimIdx,derivIdx,versionIdx,local_ny,numberOfDimensions,boundaryID,boundaryIdx
     INTEGER(INTG) :: numberOfFaceElements,numberOfElementGauss
+    INTEGER(INTG) :: domainNumber,myComputationalNodeNumber,globalNode
     REAL(DP) :: gaussWeight, normalProjection, pressureGauss,mu,sumDelU,DEBUG,elementNormal(3)
     REAL(DP) :: normalDifference,normalTolerance,delUGauss(3,3),dXi_dX(3,3),faceFlux
     REAL(DP) :: conserveFaces,sumFaceFlux,conserveFaces2,sumFaceFlux2
@@ -10428,6 +10429,7 @@ CONTAINS
     REAL(DP) :: faceVector1(3),faceVector2(3),X1(3),X2(3),lineLength,lineLength1,lineLength2,phiParameter
     LOGICAL :: correctFace,ghostElement,elementExists
     LOGICAL :: elementIsMultidomainBoundary,invertedNormal,original
+    LOGICAL :: nodeExists
 
     REAL(DP), POINTER :: geometricParameters(:)
 
@@ -10528,6 +10530,8 @@ CONTAINS
       decomposition=>dependentVariable%FIELD%DECOMPOSITION
       elementsMapping=>decomposition%DOMAIN(decomposition%MESH_COMPONENT_NUMBER)%PTR%MAPPINGS%ELEMENTS
 
+      myComputationalNodeNumber=COMPUTATIONAL_NODE_NUMBER_GET(err,error)
+
       ! Loop over elements to locate boundary elements
 !      DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
       DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
@@ -10535,6 +10539,7 @@ CONTAINS
 
         !Check computational node for elementIdx
 !        userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
+
         userElementNumber = decomposition%DOMAIN(1)%PTR%MAPPINGS%ELEMENTS%LOCAL_TO_GLOBAL_MAP(elementIdx)
 
         elementExists=.FALSE.
@@ -10846,10 +10851,12 @@ CONTAINS
 
         ! Loop over elements again to allocate flux terms to boundary nodes
         decomposition=>dependentVariable%FIELD%DECOMPOSITION
-        DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
+!        DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
+        DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
           !Check computational node for elementIdx
 
-          userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
+!          userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
+          userElementNumber = decomposition%DOMAIN(1)%PTR%MAPPINGS%ELEMENTS%LOCAL_TO_GLOBAL_MAP(elementIdx)
 
           elementExists=.FALSE.
           ghostElement=.TRUE.
@@ -10858,13 +10865,13 @@ CONTAINS
           IF(elementExists .AND. .NOT. ghostElement ) THEN
 
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementIdx,5,elementNormal(1),err,error,*999)
+             & userElementNumber,5,elementNormal(1),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementIdx,6,elementNormal(2),err,error,*999)
+             & userElementNumber,6,elementNormal(2),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementIdx,7,elementNormal(3),err,error,*999)
+             & userElementNumber,7,elementNormal(3),err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-             & elementIdx,8,boundaryValue,err,error,*999)
+             & userElementNumber,8,boundaryValue,err,error,*999)
 
             !Check if boundary element is a multidomain boundary element
             boundaryID=NINT(boundaryValue)
@@ -10919,9 +10926,13 @@ CONTAINS
                     nodeNumber=decomposition%DOMAIN(meshComponentNumber)%PTR% &
                      & TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%ELEMENT_NODES(elementNodeIdx)
                     versionNumber=1
-                    !Store node-based boundary flux
-                    CALL FIELD_PARAMETER_SET_UPDATE_NODE(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-                      & versionNumber,faceNodeDerivativeIdx,nodeNumber,13,boundaryFlux(boundaryID),err,error,*999) 
+                    !Test if this node domain is on computational node
+                    CALL DECOMPOSITION_NODE_DOMAIN_GET(decomposition,nodeNumber,meshComponentNumber,domainNumber,err,error,*999)
+                    IF(domainNumber==myComputationalNodeNumber) THEN
+                      !Store node-based boundary flux
+                      CALL FIELD_PARAMETER_SET_UPDATE_NODE(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                        & versionNumber,faceNodeDerivativeIdx,nodeNumber,13,boundaryFlux(boundaryID),err,error,*999) 
+                    ENDIF ! check node domain
                   END DO !nodeDerivativeIdx
                 END DO !faceNodeIdx
 

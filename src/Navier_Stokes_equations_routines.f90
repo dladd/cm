@@ -10533,15 +10533,9 @@ CONTAINS
       myComputationalNodeNumber=COMPUTATIONAL_NODE_NUMBER_GET(err,error)
 
       ! Loop over elements to locate boundary elements
-!      DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
       DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
-        !Get the element boundary identifier (zeroes if not a Coupled Multidomain Method boundary)
-
         !Check computational node for elementIdx
-!        userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
-
         userElementNumber = decomposition%DOMAIN(1)%PTR%MAPPINGS%ELEMENTS%LOCAL_TO_GLOBAL_MAP(elementIdx)
-
         elementExists=.FALSE.
         ghostElement=.TRUE.
         CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &
@@ -10573,16 +10567,6 @@ CONTAINS
               & dependentVariable%VARIABLE_TYPE)%PTR
             dependentInterpolatedPoint=>equations%INTERPOLATION%DEPENDENT_INTERP_POINT( &
               & dependentVariable%VARIABLE_TYPE)%PTR
-            ! geometricField=>equationsSet%GEOMETRY%GEOMETRIC_FIELD
-            ! CALL FIELD_NUMBER_OF_COMPONENTS_GET(geometricField,FIELD_U_VARIABLE_TYPE,numberOfDimensions,ERR,ERROR,*999)
-            ! !Get access to geometric coordinates
-            ! CALL FIELD_VARIABLE_GET(geometricField,FIELD_U_VARIABLE_TYPE,geometricVariable,ERR,ERROR,*999)
-            ! meshComponentNumber=geometricVariable%COMPONENTS(1)%MESH_COMPONENT_NUMBER
-            ! geometricDecomposition=>geometricField%DECOMPOSITION
-            ! !Get the geometric distributed vector
-            ! CALL FIELD_PARAMETER_SET_DATA_GET(geometricField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-            !   & geometricParameters,ERR,ERROR,*999)
-            ! fieldVariable=>equations%EQUATIONS_MAPPING%NONLINEAR_MAPPING%RESIDUAL_VARIABLES(1)%PTR
 
             ! Loop over faces to determine the boundary face contribution
             DO faceIdx=1,dependentBasis%NUMBER_OF_LOCAL_FACES
@@ -10756,58 +10740,23 @@ CONTAINS
                         parameterIdx=dependentBasis%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx,elementNodeIdx)
                         faceParameterIdx=faceBasis%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx,faceNodeIdx)
                         elementDofIdx=elementBaseDofIdx+parameterIdx
-
                         faceArea=faceArea + normalProjection*gaussWeight*pointMetrics%JACOBIAN* &
                          & faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)
-
                         faceVelocity=faceVelocity+velocityGauss(componentIdx)*normalProjection*gaussWeight* &
                          & pointMetrics%JACOBIAN*faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)
-
                       END DO !nodeDerivativeIdx
                     END DO !faceNodeIdx
                   END DO !componentIdx
-
-               ELSE
-                 EXIT
-               ENDIF                 
-
+                ELSE
+                  EXIT
+                ENDIF                 
               END DO !gaussIdx
             END DO !faceIdx
             boundaryFlux(boundaryID) = boundaryFlux(boundaryID) + faceVelocity
             boundaryArea(boundaryID) = boundaryArea(boundaryID) + faceArea
-
-            ! IF (boundaryID ==3 .AND. correctFace) THEN
-            !   numberOfFaceElements = numberOfFaceElements + 1
-            !   numberOfElementGauss = dependentBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)% &
-            !    & PTR%NUMBER_OF_GAUSS
-            !   DO gaussIdx=1,numberOfElementGauss
-            !     CALL FIELD_PARAMETER_SET_GET_GAUSS_POINT(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-            !       & userElementNumber,gaussIdx,1,shearRate,err,error,*999)
-            !     totalShearRate = totalShearRate + shearRate
-            !   ENDDO
-            ! ENDIF
-
           END IF !boundaryIdentifier
         END IF ! computational node check
       ENDDO !elementIdx                 
-
-!      averageShearRate = totalShearRate / (REAL(numberOfElementGauss)*REAL(numberOfFaceElements))
-
-!      sumFaceFlux=0.0_DP
-!      sumFaceFlux2=0.0_DP
-!      DO boundaryIdx=2,SIZE(boundaryFlux)
-!        sumFaceFlux=sumFaceFlux + boundaryFlux(boundaryIdx)
-!      ENDDO
-
-!      sumFaceFlux=sumFaceFlux + boundaryFlux(2)
-      ! ! temp check for interior element
-      ! sumFaceFlux2=sumFaceFlux2 + boundaryFlux(3)
-      ! IF ( ABS(boundaryFlux(1)) > ZERO_TOLERANCE) THEN
-      !   conserveFaces=(ABS(sumFaceFlux) - ABS(boundaryFlux(1)))/ABS(boundaryFlux(1))*100
-      !   conserveFaces2=(ABS(sumFaceFlux2/2.0_DP) - ABS(boundaryFlux(1)))/ABS(boundaryFlux(1))*100
-      ! ELSE
-      !   conserveFaces=0.0_DP
-      ! ENDIF
 
       DO boundaryIdx=1,SIZE(boundaryFlux)
         IF(ABS(boundaryArea(boundaryIdx)) > ZERO_TOLERANCE) THEN
@@ -10817,47 +10766,12 @@ CONTAINS
         ENDIF
       ENDDO
 
-!      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Average shear rate: ",averageShearRate,err,error,*999)
-!      CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"number face elements: ",numberOfFaceElements,err,error,*999)
-
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Conservation of face flux error %",conserveFaces,err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Conservation of inner face flux error %",conserveFaces2,err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Inlet flux",boundaryFlux(1),err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Outlet flux",sumFaceFlux,err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Inlet Area",boundaryArea(1),err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Outlet Area",boundaryArea(2),err,error,*999)
-      ! CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"Inner Area",boundaryArea(3)/2.0_DP,err,error,*999)
-
-      ! ! Loop over elements again to allocate flux terms to boundary elements
-      ! DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
-      !   !Check computational node for elementIdx
-      !   elementExists=.FALSE.
-      !   ghostElement=.TRUE.
-      !   CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &
-      !     & elementIdx,elementExists,decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)              
-      !   IF(elementExists .AND. .NOT. ghostElement ) THEN
-      !     CALL FIELD_PARAMETER_SET_GET_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !      & elementIdx,8,boundaryValue,err,error,*999)
-      !     !boundary element identifier
-      !     boundaryID=NINT(boundaryValue)
-      !     IF(boundaryID>0) THEN
-      !       CALL FIELD_PARAMETER_SET_UPDATE_ELEMENT(equationsSetField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-      !        & elementIdx,9,boundaryFlux(boundaryID),ERR,ERROR,*999)
-      !     ENDIF
-      !   END IF ! computational node check
-      ! ENDDO !elementIdx                  
-
       IF(equationsSet%SUBTYPE==EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE) THEN
-
         ! Loop over elements again to allocate flux terms to boundary nodes
         decomposition=>dependentVariable%FIELD%DECOMPOSITION
-!        DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%INTERNAL_FINISH
         DO elementIdx=1,elementsMapping%NUMBER_OF_LOCAL
           !Check computational node for elementIdx
-
-!          userElementNumber=decomposition%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)%USER_NUMBER
           userElementNumber = decomposition%DOMAIN(1)%PTR%MAPPINGS%ELEMENTS%LOCAL_TO_GLOBAL_MAP(elementIdx)
-
           elementExists=.FALSE.
           ghostElement=.TRUE.
           CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(equationsSetField%DECOMPOSITION%TOPOLOGY, &

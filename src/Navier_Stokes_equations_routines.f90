@@ -1333,7 +1333,7 @@ CONTAINS
                                 & TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SETUP%ANALYTIC_FUNCTION_TYPE,"*",ERR,ERROR))
                               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                             ENDIF
-                          CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_FlowrateSinusoid)
+                          CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
                             !Check that domain is 3D
                             IF(NUMBER_OF_DIMENSIONS/=3) THEN
                               LOCAL_ERROR="The number of geometric dimensions of "// &
@@ -1346,7 +1346,7 @@ CONTAINS
                             !Set analytic function type
                             EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_SETUP%ANALYTIC_FUNCTION_TYPE
                             !Set numbrer of components
-                            NUMBER_OF_ANALYTIC_COMPONENTS=6
+                            NUMBER_OF_ANALYTIC_COMPONENTS=7
                           CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN)
                             !Set analtyic function type
                             EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE=EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN
@@ -1521,8 +1521,9 @@ CONTAINS
                           & FIELD_VALUES_SET_TYPE,1,0.0_DP,ERR,ERROR,*999)
                         CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
                           & FIELD_VALUES_SET_TYPE,2,0.0_DP,ERR,ERROR,*999)
-                      CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_FlowrateSinusoid)
+                      CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
                         !Default the analytic parameter values to 0
+                        ! 4 Dependent Components + amplitude + offset + period = 7
                         CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
                           & FIELD_VALUES_SET_TYPE,1,0.0_DP,ERR,ERROR,*999)
                         CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
@@ -1533,6 +1534,10 @@ CONTAINS
                           & FIELD_VALUES_SET_TYPE,4,0.0_DP,ERR,ERROR,*999)
                         CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
                           & FIELD_VALUES_SET_TYPE,5,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,6,0.0_DP,ERR,ERROR,*999)
+                        CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_ANALYTIC%ANALYTIC_FIELD,FIELD_U_VARIABLE_TYPE, &
+                          & FIELD_VALUES_SET_TYPE,7,0.0_DP,ERR,ERROR,*999)
                       CASE DEFAULT
                         LOCAL_ERROR="The analytic function type of "// &
                           & TRIM(NUMBER_TO_VSTRING(EQUATIONS_ANALYTIC%ANALYTIC_FUNCTION_TYPE,"*",ERR,ERROR))// &
@@ -2728,10 +2733,10 @@ CONTAINS
                   CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
                   !setup CellML evaluator
                   IF(PROBLEM%SUBTYPE==PROBLEM_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE) THEN
-                    !Create the CellML evaluator solver
-                    CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,cellmlSolver,ERR,ERROR,*999)
-                    !Link the CellML evaluator solver to the solver
-                    CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,cellmlSolver,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
+                    ! !Create the CellML evaluator solver
+                    ! CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,cellmlSolver,ERR,ERROR,*999)
+                    ! !Link the CellML evaluator solver to the solver
+                    ! CALL SOLVER_LINKED_SOLVER_ADD(SOLVER,cellmlSolver,SOLVER_CELLML_EVALUATOR_TYPE,ERR,ERROR,*999)
                   ENDIF
                 CASE(PROBLEM_SETUP_FINISH_ACTION)
                   !Get the solvers
@@ -3524,6 +3529,10 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
+                    !If specified, also perform face integration for neumann boundary conditions
+                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
+                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
+                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -3557,8 +3566,8 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If this is a boundary element, calculate RHS vector for multidomain boundaries
-                    IF(DECOMPOSITION%TOPOLOGY%ELEMENTS%ELEMENTS(ELEMENT_NUMBER)%BOUNDARY_ELEMENT) THEN
+                    !If specified, also perform face integration for neumann boundary conditions
+                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
                       CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
                     ENDIF
                   ELSE
@@ -4471,6 +4480,10 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
+                    !If specified, also perform face integration for neumann boundary conditions
+                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
+                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
+                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -4497,8 +4510,8 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If this is a boundary element, calculate RHS vector for multidomain boundaries
-                    IF(DECOMPOSITION%TOPOLOGY%ELEMENTS%ELEMENTS(ELEMENT_NUMBER)%BOUNDARY_ELEMENT) THEN
+                    !If specified, also perform face integration for neumann boundary conditions
+                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
                       CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
                     ENDIF
                   ELSE
@@ -5213,7 +5226,7 @@ CONTAINS
                 ! Analytic equations
                 IF(ASSOCIATED(EQUATIONS_SET%ANALYTIC)) THEN
                   !Standard analytic functions
-                  IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_FlowrateSinusoid) THEN
+                  IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid) THEN
                     ! Update analytic time value with current time
                     EQUATIONS_SET%ANALYTIC%ANALYTIC_TIME=CURRENT_TIME
                     ! Calculate analytic values
@@ -6859,13 +6872,15 @@ CONTAINS
                     IF(OUTPUT_ITERATION_NUMBER/=0) THEN
                       IF(CONTROL_LOOP%TIME_LOOP%CURRENT_TIME<=CONTROL_LOOP%TIME_LOOP%STOP_TIME) THEN
                         IF(CURRENT_LOOP_ITERATION<10) THEN
-                          WRITE(OUTPUT_FILE,'("TIME_STEP_000",I0)') CURRENT_LOOP_ITERATION
+                          WRITE(OUTPUT_FILE,'("TimeStep_0000",I0)') CURRENT_LOOP_ITERATION
                         ELSE IF(CURRENT_LOOP_ITERATION<100) THEN
-                          WRITE(OUTPUT_FILE,'("TIME_STEP_00",I0)') CURRENT_LOOP_ITERATION
+                          WRITE(OUTPUT_FILE,'("TimeStep_000",I0)') CURRENT_LOOP_ITERATION
                         ELSE IF(CURRENT_LOOP_ITERATION<1000) THEN
-                          WRITE(OUTPUT_FILE,'("TIME_STEP_0",I0)') CURRENT_LOOP_ITERATION
+                          WRITE(OUTPUT_FILE,'("TimeStep_00",I0)') CURRENT_LOOP_ITERATION
                         ELSE IF(CURRENT_LOOP_ITERATION<10000) THEN
-                          WRITE(OUTPUT_FILE,'("TIME_STEP_",I0)') CURRENT_LOOP_ITERATION
+                          WRITE(OUTPUT_FILE,'("TimeStep_0",I0)') CURRENT_LOOP_ITERATION
+                        ELSE IF(CURRENT_LOOP_ITERATION<100000) THEN
+                          WRITE(OUTPUT_FILE,'("TimeStep_",I0)') CURRENT_LOOP_ITERATION
                         END IF
                         FILE=OUTPUT_FILE
                         METHOD="FORTRAN"
@@ -7030,7 +7045,7 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: componentIdx,derivativeIdx,dimensionIdx,local_ny,nodeIdx,numberOfDimensions,variableIdx,variableType,I,J,K
     INTEGER(INTG) :: numberOfNodesXiCoord(3),elementIdx,en_idx,boundaryCount,analyticFunctionType,globalDerivativeIndex,versionIdx
-    INTEGER(INTG) :: boundaryConditionsCheckVariable,numberOfXi
+    INTEGER(INTG) :: boundaryConditionsCheckVariable,numberOfXi,global_ny
     REAL(DP) :: VALUE,X(3),xiCoordinates(3),initialValue
     REAL(DP) :: T_COORDINATES(20,3)
     REAL(DP), POINTER :: analyticParameters(:),geometricParameters(:),materialsParameters(:)
@@ -7165,7 +7180,7 @@ CONTAINS
 
                       ! --- Set velocity boundary conditions with analytic value ---
                       CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_TAYLOR_GREEN, &
-                        &  EQUATIONS_SET_NAVIER_STOKES_EQUATION_FlowrateSinusoid)
+                        &  EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
                         ! Get geometric position info for this node
                         DO dimensionIdx=1,numberOfDimensions
                           local_ny=geometricVariable%COMPONENTS(dimensionIdx)%PARAM_TO_DOF_MAP%NODE_PARAM2DOF_MAP% &
@@ -7176,7 +7191,7 @@ CONTAINS
                         DO derivativeIdx=1,domainNodes%NODES(nodeIdx)%NUMBER_OF_DERIVATIVES
                           globalDerivativeIndex=domainNodes%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)% &
                             & GLOBAL_DERIVATIVE_INDEX
-                          IF(componentIdx<=numberOfXi) THEN
+!                          IF(componentIdx<=numberOfXi) THEN
                             CALL NAVIER_STOKES_ANALYTIC_FUNCTIONS_EVALUATE(equationsSet%SUBTYPE, & 
                               & analyticFunctionType,X,TANGENTS,NORMAL,TIME,variableType,globalDerivativeIndex,componentIdx, &
                               & numberOfDimensions,fieldVariable%NUMBER_OF_COMPONENTS,analyticParameters, &
@@ -7191,8 +7206,9 @@ CONTAINS
                                   CALL BOUNDARY_CONDITIONS_VARIABLE_GET(boundaryConditions,fieldVariable, &
                                    & boundaryConditionsVariable,err,error,*999)
                                   IF(ASSOCIATED(boundaryConditionsVariable)) THEN
+                                    global_ny=fieldVariable%DOMAIN_MAPPING%LOCAL_TO_GLOBAL_MAP(local_ny)
                                     boundaryConditionsCheckVariable=boundaryConditionsVariable% &
-                                     & CONDITION_TYPES(local_ny)
+                                     & CONDITION_TYPES(global_ny)
                                     IF(boundaryConditionsCheckVariable==BOUNDARY_CONDITION_FIXED_INLET) THEN
                                       !If we are a boundary node then set the analytic value on the boundary
                                       CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
@@ -7202,7 +7218,7 @@ CONTAINS
                                 ENDIF
                               ENDIF
                             ENDDO !versionIdx
-                          ENDIF
+!                          ENDIF
                         ENDDO !derivativeIdx
 
                       ! --- Set Flow rate boundary conditions with analytic value ---
@@ -7522,7 +7538,7 @@ CONTAINS
     !Local variables
     REAL(DP) :: L_PARAM,H_PARAM,U_PARAM,P_PARAM,MU_PARAM,NU_PARAM,RHO_PARAM,INTERNAL_TIME,CURRENT_TIME,K_PARAM
     REAL(DP) :: period
-    REAL(DP) :: boundaryNormal(3),amplitude,offset
+    REAL(DP) :: boundaryNormal(4),amplitude,offset
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
     CALL ENTERS("NAVIER_STOKES_ANALYTIC_FUNCTIONS_EVALUATE",ERR,ERROR,*999)
@@ -7890,18 +7906,19 @@ CONTAINS
          CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
        END SELECT
 
-     CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_FlowrateSinusoid)
+     CASE(EQUATIONS_SET_NAVIER_STOKES_EQUATION_Sinusoid)
        ! Returns a sinusoidal value for boundary nodes
        SELECT CASE(NUMBER_OF_DIMENSIONS)
        CASE(3)
          SELECT CASE(VARIABLE_TYPE)
          CASE(FIELD_U_VARIABLE_TYPE)
-           boundaryNormal(1) = ANALYTIC_PARAMETERS(1) ! normal vector in x
-           boundaryNormal(2) = ANALYTIC_PARAMETERS(2) ! normal vector in y
-           boundaryNormal(3) = ANALYTIC_PARAMETERS(3) ! normal vector in z
-           period = ANALYTIC_PARAMETERS(4) ! time period for waveform
+           boundaryNormal(1) = ANALYTIC_PARAMETERS(1) ! u(x) scale
+           boundaryNormal(2) = ANALYTIC_PARAMETERS(2) ! u(y) scale
+           boundaryNormal(3) = ANALYTIC_PARAMETERS(3) ! u(z) scale
+           boundaryNormal(4) = ANALYTIC_PARAMETERS(4) ! p scale
            amplitude = ANALYTIC_PARAMETERS(5) ! amplitude of sine wave
            offset = ANALYTIC_PARAMETERS(6) ! constant value
+           period = ANALYTIC_PARAMETERS(7) ! time period for waveform
            SELECT CASE(GLOBAL_DERIV_INDEX)
            CASE(NO_GLOBAL_DERIV)
              !Set analytic value for w
@@ -8812,6 +8829,7 @@ CONTAINS
     TYPE(QUADRATURE_SCHEME_TYPE), POINTER :: faceQuadratureScheme
     TYPE(FIELD_INTERPOLATED_POINT_TYPE), POINTER :: geometricInterpolatedPoint
     TYPE(FIELD_INTERPOLATION_PARAMETERS_TYPE), POINTER :: geometricInterpolationParameters
+    TYPE(FIELD_INTERPOLATION_PARAMETERS_TYPE), POINTER :: faceInterpolationParameters
     TYPE(FIELD_INTERPOLATED_POINT_METRICS_TYPE), POINTER :: pointMetrics
     TYPE(FIELD_TYPE), POINTER :: dependentField
     TYPE(EQUATIONS_MATRICES_RHS_TYPE), POINTER :: rhsVector
@@ -8845,6 +8863,7 @@ CONTAINS
     NULLIFY(dependentInterpolationParameters)
     NULLIFY(geometricInterpolatedPoint)
     NULLIFY(geometricInterpolationParameters)
+    NULLIFY(faceInterpolationParameters)
     NULLIFY(rhsVector)
     NULLIFY(nonlinearMatrices)
     NULLIFY(dependentField)
@@ -8869,7 +8888,8 @@ CONTAINS
     END IF
 
     SELECT CASE(equationsSet%SUBTYPE)
-    CASE(EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE)
+    CASE(EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE, &
+       & EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_MULTIDOMAIN_SUBTYPE)
 
       !Get the mesh decomposition and basis
       decomposition=>dependentVariable%FIELD%DECOMPOSITION
@@ -8888,6 +8908,7 @@ CONTAINS
         !Get the geometric interpolation parameters
         geometricInterpolationParameters=>equations%INTERPOLATION%GEOMETRIC_INTERP_PARAMETERS( &
           & FIELD_U_VARIABLE_TYPE)%PTR
+        geometricInterpolatedPoint=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
         geometricField=>equationsSet%GEOMETRY%GEOMETRIC_FIELD
         CALL FIELD_NUMBER_OF_COMPONENTS_GET(geometricField,FIELD_U_VARIABLE_TYPE,numberOfDimensions,ERR,ERROR,*999)
         !Get access to geometric coordinates
@@ -8919,15 +8940,14 @@ CONTAINS
             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
           END SELECT
 
-          CALL FIELD_INTERPOLATION_PARAMETERS_FACE_GET(FIELD_VALUES_SET_TYPE,faceNumber, &
-            & dependentInterpolationParameters,err,error,*999)
+          ! CALL FIELD_INTERPOLATION_PARAMETERS_FACE_GET(FIELD_VALUES_SET_TYPE,faceNumber, &
+          !   & faceInterpolationParameters,err,error,*999)
 
           faceBasis=>decomposition%DOMAIN(1)%PTR%TOPOLOGY%FACES%FACES(faceNumber)%BASIS
           faceQuadratureScheme=>faceBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
 
           DO gaussIdx=1,faceQuadratureScheme%NUMBER_OF_GAUSS
             !Get interpolated geometry
-            geometricInterpolatedPoint=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
             CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
               & geometricInterpolatedPoint,err,error,*999)
             !Get interpolated velocity and pressure 

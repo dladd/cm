@@ -5694,7 +5694,7 @@ CONTAINS
     TYPE(DOMAIN_NODES_TYPE), POINTER:: DOMAIN_NODES !nodes in local domain
     TYPE(FIELD_VARIABLE_TYPE), POINTER:: FIELD_VARIABLE !field variable
     INTEGER(INTG) :: field_idx, var_idx, component_idx, deriv_idx, np, nn, num_field !temporary variable
-    INTEGER(INTG) :: MAX_NUMBER_VERSIONS
+    INTEGER(INTG) :: MAX_NUMBER_VERSIONS,domainNumber
     LOGICAL :: foundNewNode
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
@@ -5806,10 +5806,14 @@ CONTAINS
             ENDDO !nn=1
 
             IF( foundNewNode ) THEN
-              !TODO This code re-allocates new memory once per node. Reduce memory-thrashing by adding memory in chunks.
-              CALL GROW_ARRAY( NODAL_INFO_SET%LIST_OF_GLOBAL_NUMBER, 1, "Could not allocate buffer in IO", ERR, ERROR, *999 )
-              NODAL_INFO_SET%LIST_OF_GLOBAL_NUMBER(NODAL_INFO_SET%NUMBER_OF_ENTRIES+1)= DOMAIN_NODES%NODES(np)%GLOBAL_NUMBER
-              NODAL_INFO_SET%NUMBER_OF_ENTRIES=NODAL_INFO_SET%NUMBER_OF_ENTRIES+1
+              CALL DECOMPOSITION_NODE_DOMAIN_GET(FIELD%DECOMPOSITION,DOMAIN_NODES%NODES(np)%USER_NUMBER,&
+                & FIELD_VARIABLE%COMPONENTS(1)%MESH_COMPONENT_NUMBER,domainNumber,ERR,ERROR,*999)
+              IF(domainNumber == my_computational_node_number) THEN
+                !TODO This code re-allocates new memory once per node. Reduce memory-thrashing by adding memory in chunks.
+                CALL GROW_ARRAY( NODAL_INFO_SET%LIST_OF_GLOBAL_NUMBER, 1, "Could not allocate buffer in IO", ERR, ERROR, *999 )
+                NODAL_INFO_SET%LIST_OF_GLOBAL_NUMBER(NODAL_INFO_SET%NUMBER_OF_ENTRIES+1)= DOMAIN_NODES%NODES(np)%GLOBAL_NUMBER
+                NODAL_INFO_SET%NUMBER_OF_ENTRIES=NODAL_INFO_SET%NUMBER_OF_ENTRIES+1
+              ENDIF
             ENDIF
           ENDDO !np
         ENDDO !component_idx

@@ -3529,10 +3529,6 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If specified, also perform face integration for neumann boundary conditions
-                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
-                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
-                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -3566,10 +3562,6 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If specified, also perform face integration for neumann boundary conditions
-                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
-                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
-                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -4267,6 +4259,13 @@ CONTAINS
             ENDIF
           ENDIF
 
+          IF(RHS_VECTOR%UPDATE_VECTOR) THEN
+            !If specified, also perform face integration for neumann boundary conditions
+            IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
+              CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
+            ENDIF
+          ENDIF
+
           !!!--   A S S E M B L E   M A T R I C E S  &  V E C T O R S   --!!!
           mhs_min=mhs
           mhs_max=nhs
@@ -4480,10 +4479,6 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If specified, also perform face integration for neumann boundary conditions
-                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
-                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
-                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -4510,10 +4505,6 @@ CONTAINS
                     TAU_SUPG=0.0_DP
                     !Calculate SUPG element metrics
                     CALL NavierStokes_SUPGCalculate(EQUATIONS_SET,ELEMENT_NUMBER,TAU_SUPG,ERR,ERROR,*999)
-                    !If specified, also perform face integration for neumann boundary conditions
-                    IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
-                      CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
-                    ENDIF
                   ELSE
                     CALL FLAG_ERROR("Equations set field field is not associated.",ERR,ERROR,*999)
                   ENDIF
@@ -8840,9 +8831,10 @@ CONTAINS
     INTEGER(INTG) :: faceNodeDerivativeIdx, meshComponentNumber, nodeDerivativeIdx, parameterIdx,xiIdx
     INTEGER(INTG) :: faceParameterIdx, elementDofIdx, normalComponentIdx
     INTEGER(INTG) :: numberOfDimensions
-    REAL(DP) :: normalProjection,normalProjection2,pressureGauss,mu,sumDelU,jacobianGaussWeights
-    REAL(DP) :: areaJacobian,volumeJacobian
-    REAL(DP) :: delUGauss(3,3),dXi_dX(3,3)
+    REAL(DP) :: pressure,viscosity,sumDelU,jacobianGaussWeights
+    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3)
+    REAL(DP) :: volumeJacobian
+    REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),gradU_T(3,3),deviatoricStress(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
     REAL(DP), POINTER :: geometricParameters(:)
@@ -8940,9 +8932,6 @@ CONTAINS
             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
           END SELECT
 
-          ! CALL FIELD_INTERPOLATION_PARAMETERS_FACE_GET(FIELD_VALUES_SET_TYPE,faceNumber, &
-          !   & faceInterpolationParameters,err,error,*999)
-
           faceBasis=>decomposition%DOMAIN(1)%PTR%TOPOLOGY%FACES%FACES(faceNumber)%BASIS
           faceQuadratureScheme=>faceBasis%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
 
@@ -8953,67 +8942,67 @@ CONTAINS
             !Get interpolated velocity and pressure 
             CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
               & dependentInterpolatedPoint,err,error,*999)
-            pressureGauss=0.0_DP
-            delUGauss=0.0_DP
-            pressureGauss=dependentInterpolatedPoint%values(4,NO_PART_DERIV) 
-            delUGauss(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
-            delUGauss(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
-            delUGauss(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
+            pressure=0.0_DP
+            dUDXi=0.0_DP
+            velocity(1)=dependentInterpolatedPoint%values(1,NO_PART_DERIV) 
+            velocity(2)=dependentInterpolatedPoint%values(2,NO_PART_DERIV) 
+            velocity(3)=dependentInterpolatedPoint%values(3,NO_PART_DERIV) 
+            pressure=dependentInterpolatedPoint%values(4,NO_PART_DERIV) 
+            dUDXi(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
+            dUDXi(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
+            dUDXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
             !Materials parameters
-            mu=equations%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(1,NO_PART_DERIV)
+            viscosity=equations%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(1,NO_PART_DERIV)
 
             !Calculate point metrics
             pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
-            CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_AREA_TYPE,pointMetrics,err,error,*999)
-            areaJacobian=pointMetrics%Jacobian
             CALL FIELD_INTERPOLATED_POINT_METRICS_CALCULATE(COORDINATE_JACOBIAN_VOLUME_TYPE,pointMetrics,err,error,*999)
             volumeJacobian=pointMetrics%Jacobian
-            dXi_dX=0.0_DP
-            dXi_dX=pointMetrics%DXI_DX(:,:)
+            dXiDX=0.0_DP
+            dXiDX=pointMetrics%DXI_DX(:,:)
             elementBaseDofIdx=0
+
+            !Calculate deviatoric stress tensor
+            CALL MATRIX_PRODUCT(dUDXi,dXiDX,gradU,err,error,*999)
+            CALL MATRIX_TRANSPOSE(gradU,gradU_T,err,error,*999)
+            deviatoricStress = viscosity*(gradU + gradU_T)/2.0_DP
+
+            !Get face normal projection
+            DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+              normalProjection(componentIdx)=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
+              IF(face%XI_DIRECTION<0) THEN
+                normalProjection(componentIdx)=-normalProjection(componentIdx)
+              ENDIF
+            END DO
+            IF (L2NORM(normalProjection)>ZERO_TOLERANCE) THEN
+               unitNormal=normalProjection/L2NORM(normalProjection)
+            ELSE
+               unitNormal=0.0_DP
+            ENDIF
+
+            ! Get the normal stress for the viscous term
+            CALL MATRIX_VECTOR_PRODUCT(deviatoricStress,normalProjection,normalViscousTerm,err,error,*999)
 
             !Loop over field components
             DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
               !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
               elementBaseDofIdx=dependentBasis%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx-1)
-
-              normalProjection=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
-              normalProjection2=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DXI_DX(componentIdx,:))
-              IF(ABS(normalProjection)<ZERO_TOLERANCE) CYCLE
-              IF(face%XI_DIRECTION<0) THEN
-                normalProjection=-normalProjection
-                normalProjection2=-normalProjection2
-              END IF
-
               !Jacobian and Gauss weighting term
               jacobianGaussWeights=faceQuadratureScheme%GAUSS_WEIGHTS(gaussIdx)*pointMetrics%JACOBIAN
-
-              sumDelU=0.0_DP  
-              DO xiIdx=1,dependentBasis%NUMBER_OF_XI
-                sumDelU=sumDelU+ &
-                 & ((delUGauss(componentIdx,xiIdx)*pointMetrics%dXi_dX(xiIdx,1)) + &
-                 &  (delUGauss(componentIdx,xiIdx)*pointMetrics%dXi_dX(xiIdx,2)) + &
-                 &  (delUGauss(componentIdx,xiIdx)*pointMetrics%dXi_dX(xiIdx,3)))
-              ENDDO !xiIdx
 
               DO faceNodeIdx=1,faceBasis%NUMBER_OF_NODES
                 elementNodeIdx=dependentBasis%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx,faceIdx)
                 DO faceNodeDerivativeIdx=1,faceBasis%NUMBER_OF_DERIVATIVES(faceNodeIdx)
-                  nodeDerivativeIdx=1
+                  nodeDerivativeIdx=dependentBasis%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx,faceNodeIdx,faceIdx)
                   parameterIdx=dependentBasis%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx,elementNodeIdx)
                   faceParameterIdx=faceBasis%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx,faceNodeIdx)
                   elementDofIdx=elementBaseDofIdx+parameterIdx
 
                   rhsVector%ELEMENT_VECTOR%VECTOR(elementDofIdx) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDofIdx) + &
-                    &  (mu*sumDelU*normalProjection2 - pressureGauss*normalProjection)* &
+                    &  (normalViscousTerm(componentIdx) - pressure*normalProjection(componentIdx))* &
                     &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
                     &  faceQuadratureScheme%GAUSS_WEIGHTS(gaussIdx)*volumeJacobian
 
-                  ! nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDofIdx) = &
-                  !   & nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDofIdx) + &
-                  !   &  (mu*sumDelU*normalProjection2 - pressureGauss*normalProjection)* &
-                  !   &  faceQuadratureScheme1%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
-                  !   &  faceQuadratureScheme1%GAUSS_WEIGHTS(gaussIdx)*volumeJacobian
                 END DO !nodeDerivativeIdx
               END DO !faceNodeIdx
             ENDDO !componentIdx

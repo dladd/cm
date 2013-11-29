@@ -2953,10 +2953,11 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: component_idx,ne,surrounding_element_idx,basis_local_face_idx,surrounding_element_basis_local_face_idx, &
       & element_local_node_idx,basis_local_face_node_idx,basis_local_face_derivative_idx,derivative_idx,version_idx,face_idx, &
-      & node_idx,elem_idx,NODES_IN_FACE(16),NUMBER_OF_FACES,MAX_NUMBER_OF_FACES,NEW_MAX_NUMBER_OF_FACES,FACE_NUMBER,nodeNumber
+      & node_idx,elem_idx,NODES_IN_FACE(16),NUMBER_OF_FACES,MAX_NUMBER_OF_FACES,NEW_MAX_NUMBER_OF_FACES,FACE_NUMBER,nodeNumber, &
+      & decompositionLocalElementNumber
     INTEGER(INTG), ALLOCATABLE :: NODES_NUMBER_OF_FACES(:)
     INTEGER(INTG), POINTER :: TEMP_FACES(:,:),NEW_TEMP_FACES(:,:)
-    LOGICAL :: FOUND
+    LOGICAL :: FOUND,elementExists,ghostElement
     TYPE(BASIS_TYPE), POINTER :: BASIS,BASIS2
     TYPE(DECOMPOSITION_TYPE), POINTER :: DECOMPOSITION
     TYPE(DECOMPOSITION_ELEMENT_TYPE), POINTER :: DECOMPOSITION_ELEMENT
@@ -3181,8 +3182,16 @@ CONTAINS
                           DOMAIN_FACE=>DOMAIN_FACES%FACES(face_idx)
                           BASIS=>DOMAIN_FACE%BASIS
                           IF(DECOMPOSITION_FACE%NUMBER_OF_SURROUNDING_ELEMENTS==1) THEN
-                            DECOMPOSITION_FACE%BOUNDARY_FACE=.TRUE.
-                            DOMAIN_FACE%BOUNDARY_FACE=.TRUE.
+                            ! only set boundary faces for internal elements- otherwise internal cuts will be flagged as boundaries
+                            elementExists=.FALSE.
+                            ghostElement=.TRUE.
+                            CALL DECOMPOSITION_TOPOLOGY_ELEMENT_CHECK_EXISTS(DECOMPOSITION%TOPOLOGY, &
+                             & DECOMPOSITION_ELEMENTS%ELEMENTS(DOMAIN_FACE%ELEMENT_NUMBER)%USER_NUMBER,elementExists, &
+                             & decompositionLocalElementNumber,ghostElement,ERR,ERROR,*999)
+                            IF(elementExists .AND. .NOT. ghostElement ) THEN
+                              DECOMPOSITION_FACE%BOUNDARY_FACE=.TRUE.
+                              DOMAIN_FACE%BOUNDARY_FACE=.TRUE.
+                            ENDIF
                           ENDIF
                           !Allocate the elements surrounding the face
                           ALLOCATE(DECOMPOSITION_FACE%SURROUNDING_ELEMENTS(DECOMPOSITION_FACE%NUMBER_OF_SURROUNDING_ELEMENTS), &

@@ -7913,7 +7913,7 @@ CONTAINS
            SELECT CASE(GLOBAL_DERIV_INDEX)
            CASE(NO_GLOBAL_DERIV)
              !Set analytic value for w
-             VALUE= boundaryNormal(componentNumber)*(offset + amplitude*sin(2*pi*(CURRENT_TIME/(period))))
+             VALUE= boundaryNormal(componentNumber)*(offset + amplitude*COS(2*pi*(CURRENT_TIME/(period))))
            CASE DEFAULT
              LOCAL_ERROR="The global derivative index of "//TRIM(NUMBER_TO_VSTRING( &
                & GLOBAL_DERIV_INDEX,"*",ERR,ERROR))// " is invalid."
@@ -8831,8 +8831,8 @@ CONTAINS
     INTEGER(INTG) :: faceNodeDerivativeIdx, meshComponentNumber, nodeDerivativeIdx, parameterIdx,xiIdx
     INTEGER(INTG) :: faceParameterIdx, elementDofIdx, normalComponentIdx
     INTEGER(INTG) :: numberOfDimensions
-    REAL(DP) :: pressure,viscosity,sumDelU,jacobianGaussWeights
-    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3)
+    REAL(DP) :: pressure,viscosity,density,sumDelU,jacobianGaussWeights,beta,normalFlow
+    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm(3)
     REAL(DP) :: volumeJacobian
     REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),gradU_T(3,3),deviatoricStress(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
@@ -8953,6 +8953,7 @@ CONTAINS
             dUDXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
             !Materials parameters
             viscosity=equations%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(1,NO_PART_DERIV)
+            density=equations%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(2,NO_PART_DERIV)
 
             !Calculate point metrics
             pointMetrics=>equations%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR
@@ -8983,6 +8984,19 @@ CONTAINS
             ! Get the normal stress for the viscous term
             CALL MATRIX_VECTOR_PRODUCT(deviatoricStress,normalProjection,normalViscousTerm,err,error,*999)
 
+            ! Stabilisation term to correct for retrograde flow divergence.
+            ! See: M. E. Moghadam, Y. Bazilevs, T.-Y. Hsia, I. E. Vignon-Clementel, and A. L. Marsden, “A comparison of outlet boundary treatments for prevention of backflow divergence with relevance to blood flow simulations,” Comput Mech, vol. 48, no. 3, pp. 277–291, Sep. 2011.
+            ! Note: beta is a relative scaling factor 0 < beta < 1
+            beta = 0.2_DP
+            normalFlow = DOT_PRODUCT(velocity,unitNormal)
+            IF (normalFlow > ZERO_TOLERANCE) THEN
+              DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                stabilisationTerm(componentIdx) = beta*density*((normalFlow - ABS(normalFlow))/2.0_DP)*velocity(componentIdx)
+              END DO
+            ELSE
+              stabilisationTerm = 0.0_DP
+            ENDIF
+
             !Loop over field components
             DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
               !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
@@ -8999,7 +9013,8 @@ CONTAINS
                   elementDofIdx=elementBaseDofIdx+parameterIdx
 
                   rhsVector%ELEMENT_VECTOR%VECTOR(elementDofIdx) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDofIdx) + &
-                    &  (normalViscousTerm(componentIdx) - pressure*normalProjection(componentIdx))* &
+                    &  (normalViscousTerm(componentIdx) - pressure*normalProjection(componentIdx) - & 
+                    &  stabilisationTerm(componentIdx))* &
                     &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
                     &  faceQuadratureScheme%GAUSS_WEIGHTS(gaussIdx)*volumeJacobian
 

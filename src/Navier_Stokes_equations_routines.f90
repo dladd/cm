@@ -48,6 +48,7 @@ MODULE NAVIER_STOKES_EQUATIONS_ROUTINES
   USE BASE_ROUTINES
   USE BASIS_ROUTINES
   USE BOUNDARY_CONDITIONS_ROUTINES
+  USE COMP_ENVIRONMENT
   USE CONSTANTS
   USE CONTROL_LOOP_ROUTINES
   USE COORDINATE_ROUTINES
@@ -6803,8 +6804,12 @@ CONTAINS
     TYPE(REGION_TYPE), POINTER :: DEPENDENT_REGION   
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     TYPE(FIELDS_TYPE), POINTER :: Fields  !<the field object for standard field IO
+    TYPE(DOMAIN_MAPPING_TYPE), POINTER :: elementsMapping
     REAL(DP) :: CURRENT_TIME,TIME_INCREMENT
+    REAL(DP) :: lengthScale,velocityScale,cellReynoldsNumber,courantNumber
+    REAL(DP) :: maxCellReynoldsNumber,maxCourantNumber,avgCellReynoldsNumber,avgCourantNumber
     INTEGER(INTG) :: EQUATIONS_SET_IDX,CURRENT_LOOP_ITERATION,OUTPUT_ITERATION_NUMBER,NUMBER_OF_DIMENSIONS
+    INTEGER(INTG) :: elementIdx,elementNumber,compNode,numberOfLocalElements
     LOGICAL :: EXPORT_FIELD
     TYPE(VARYING_STRING) :: METHOD
     CHARACTER(14) :: FILE
@@ -6928,6 +6933,49 @@ CONTAINS
                           ENDIF
                         ENDIF
                       ENDIF 
+                    ENDIF
+                    IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_SUPG_NAVIER_STOKES_SUBTYPE) THEN
+                      !Loop over the internal elements
+                      elementsMapping=>EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD%DECOMPOSITION% &
+                       & DOMAIN(EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD%DECOMPOSITION%MESH_COMPONENT_NUMBER)%PTR%MAPPINGS%ELEMENTS
+                      maxCourantNumber = 0.0_DP
+                      maxCellReynoldsNumber = 0.0_DP
+                      avgCourantNumber = 0.0_DP
+                      avgCellReynoldsNumber = 0.0_DP
+                      numberOfLocalElements = 0
+                      DO elementIdx=elementsMapping%INTERNAL_START,elementsMapping%BOUNDARY_FINISH
+                        elementNumber=elementsMapping%DOMAIN_LIST(elementIdx)
+                        !Get element-based metrics
+                        CALL Field_ParameterSetGetLocalElement(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                         & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,elementNumber,1,lengthScale,err,error,*999)
+                        CALL Field_ParameterSetGetLocalElement(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                         & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,elementNumber,2,velocityScale,err,error,*999)
+                        CALL Field_ParameterSetGetLocalElement(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                         & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,elementNumber,3,cellReynoldsNumber,err,error,*999)
+                        !Calculate Courant (CFL) number and store value
+                        courantNumber=velocityScale*TIME_INCREMENT/lengthScale
+                        CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_ELEMENT(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD,&
+                         & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,elementNumber,4,courantNumber,err,error,*999)
+                        IF(courantNumber > maxCourantNumber) THEN
+                          maxCourantNumber = courantNumber
+                        ENDIF
+                        IF(cellReynoldsNumber > maxCellReynoldsNumber) THEN
+                          maxCellReynoldsNumber = cellReynoldsNumber
+                        ENDIF
+                        !Output the courant and cell Reynolds #'s for this processor and timestep
+                        numberOfLocalElements = numberOfLocalElements + 1
+                        avgCourantNumber = avgCourantNumber + courantNumber
+                        avgCellReynoldsNumber = avgCellReynoldsNumber + cellReynoldsNumber
+                      ENDDO !element_idx                      
+                      compNode = COMPUTATIONAL_NODE_NUMBER_GET(ERR,ERROR)
+                      avgCourantNumber = avgCourantNumber/numberOfLocalElements
+                      avgCellReynoldsNumber = avgCellReynoldsNumber/numberOfLocalElements
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Computational node #   = ",compNode,err,error,*999)                      
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"   # of elements       = ",numberOfLocalElements,err,error,*999)                      
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"   Max Courant #       = ",maxCourantNumber,err,error,*999)
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"   Avg Courant #       = ",avgCourantNumber,err,error,*999)
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"   Max Cell Reynolds # = ",maxCellReynoldsNumber,err,error,*999)
+                      CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"   Avg Cell Reynolds # = ",avgCellReynoldsNumber,err,error,*999)
                     ENDIF
                   ENDDO
                 ENDIF
@@ -8989,7 +9037,7 @@ CONTAINS
             ! Note: beta is a relative scaling factor 0 < beta < 1
             beta = 0.2_DP
             normalFlow = DOT_PRODUCT(velocity,unitNormal)
-            IF (normalFlow > ZERO_TOLERANCE) THEN
+            IF (normalFlow < ZERO_TOLERANCE) THEN
               DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
                 stabilisationTerm(componentIdx) = beta*density*((normalFlow - ABS(normalFlow))/2.0_DP)*velocity(componentIdx)
               END DO

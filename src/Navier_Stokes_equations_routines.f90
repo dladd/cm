@@ -4433,7 +4433,7 @@ CONTAINS
     INTEGER(INTG) :: numberOfVersions,nodeNumber,numberOfElementNodes,numberOfParameters,firstNode,lastNode
     REAL(DP) :: JGW,SUM,X(3),DXI_DX(3,3),DPHIMS_DXI(3),DPHINS_DXI(3),PHIMS,PHINS,momentum,mass,QUpwind,AUpwind,pExternal
     REAL(DP) :: U_VALUE(3),W_VALUE(3),U_DERIV(3,3),Q_VALUE,A_VALUE,Q_DERIV,A_DERIV,area,pressure,normalWave,normal,Lref,Tref,Mref
-    REAL(DP) :: MU_PARAM,RHO_PARAM,A0_PARAM,E_PARAM,H_PARAM,A0_DERIV,E_DERIV,H_DERIV,alpha,beta,G0_PARAM,muScale
+    REAL(DP) :: MU_PARAM,RHO_PARAM,A0_PARAM,E_PARAM,H_PARAM,A0_DERIV,E_DERIV,H_DERIV,alpha,beta,kappa,G0_PARAM,muScale
     REAL(DP), POINTER :: dependentParameters(:),materialsParameters(:),materialsParameters1(:)
     LOGICAL :: UPDATE_STIFFNESS_MATRIX,UPDATE_DAMPING_MATRIX,UPDATE_RHS_VECTOR,UPDATE_NONLINEAR_RESIDUAL
     TYPE(VARYING_STRING) :: LOCAL_ERROR
@@ -5040,6 +5040,7 @@ CONTAINS
               H_PARAM=EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_V_VARIABLE_TYPE)%PTR%VALUES(3,NO_PART_DERIV)
               H_DERIV=EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_V_VARIABLE_TYPE)%PTR%VALUES(3,FIRST_PART_DERIV)
               beta = (4.0_DP*(SQRT(PI))*E_PARAM*H_PARAM)/(3.0_DP*A0_PARAM)  !(kg/m2/s2)
+              kappa = 8.0_DP*PI*MU_PARAM/RHO_PARAM ! viscous resistance operator
 
               ! If A goes negative during nonlinear iteration, give ZERO_TOLERANCE value to avoid segfault
               IF(A_VALUE < A0_PARAM*0.001_DP) THEN
@@ -5134,7 +5135,7 @@ CONTAINS
                         & (A_VALUE/(2.0_DP*SQRT(A0_PARAM))-(A_VALUE**1.5_DP)/A0_PARAM)*A0_DERIV+ &  !A0 gradient                                            
                         & (A_VALUE*(SQRT(A_VALUE)))*(H_DERIV/H_PARAM) + &                           !H  gradient (nonlinear part)
                         & (A_VALUE*(SQRT(A_VALUE)))*(E_DERIV/E_PARAM)))* &                          !E  gradient (nonlinear part)
-                        & DXI_DX(1,1)+(Q_VALUE/A_VALUE))*PHIMS                                      !Viscosity
+                        & DXI_DX(1,1)+kappa*(Q_VALUE/A_VALUE))*PHIMS                                      !Viscosity
                       NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(mhs)= &
                         & NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR(mhs)+SUM*JGW
                     END IF
@@ -5360,7 +5361,7 @@ CONTAINS
     INTEGER(INTG) :: numberOfElementNodes,numberOfParameters,numberOfVersions,componentIdx
     INTEGER(INTG) :: FIELD_VAR_TYPE,MESH_COMPONENT_NUMBER,MESH_COMPONENT1,MESH_COMPONENT2
     REAL(DP) :: JGW,SUM,DXI_DX(3,3),DPHIMS_DXI(3),DPHINS_DXI(3),PHIMS,PHINS
-    REAL(DP) :: U_VALUE(3),W_VALUE(3),U_DERIV(3,3),Q_VALUE,Q_DERIV,A_VALUE,A_DERIV,alpha,beta,normal,normalWave
+    REAL(DP) :: U_VALUE(3),W_VALUE(3),U_DERIV(3,3),Q_VALUE,Q_DERIV,A_VALUE,A_DERIV,alpha,beta,normal,normalWave,kappa
     REAL(DP) :: MU_PARAM,RHO_PARAM,A0_PARAM,A0_DERIV,E_PARAM,E_DERIV,H_PARAM,H_DERIV,mass,momentum1,momentum2,muScale
     LOGICAL  :: UPDATE_JACOBIAN_MATRIX
 
@@ -5682,6 +5683,7 @@ CONTAINS
                 H_PARAM=EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_V_VARIABLE_TYPE)%PTR%VALUES(3,NO_PART_DERIV)
                 H_DERIV=EQUATIONS%INTERPOLATION%MATERIALS_INTERP_POINT(FIELD_V_VARIABLE_TYPE)%PTR%VALUES(3,FIRST_PART_DERIV)
                 beta = (4.0_DP*SQRT(PI)*E_PARAM*H_PARAM)/(3.0_DP*A0_PARAM)     !(kg/m2/s2)
+                kappa = 8.0_DP*PI*MU_PARAM/RHO_PARAM ! viscous resistance operator
 
                 ! If A goes negative during nonlinear iteration, give ZERO_TOLERANCE value to avoid segfault
                 IF(A_VALUE < A0_PARAM*0.001_DP) THEN
@@ -5732,7 +5734,7 @@ CONTAINS
                             SUM=((alpha*2.0_DP*PHINS*Q_DERIV/A_VALUE +  &
                               & alpha*2.0_DP*Q_VALUE*DPHINS_DXI(1)/A_VALUE+ &
                               & (-2.0_DP)*alpha*Q_VALUE*PHINS*A_DERIV/(A_VALUE**2.0_DP))*DXI_DX(1,1)+ &   !Convective
-                              & ((PHINS/A_VALUE)))*PHIMS                                                  !Viscosity
+                              & ((PHINS*kappa/A_VALUE)))*PHIMS                                                  !Viscosity
                             JACOBIAN_MATRIX%ELEMENT_JACOBIAN%MATRIX(mhs,nhs)= &
                               & JACOBIAN_MATRIX%ELEMENT_JACOBIAN%MATRIX(mhs,nhs)+SUM*JGW
                           END IF
@@ -5746,7 +5748,7 @@ CONTAINS
                               & ((1.0_DP/SQRT(A0_PARAM))-((3.0_DP/(A0_PARAM))*SQRT(A_VALUE)))*(A0_DERIV) + &       !Ref Area Gradient
                               & (2.0_DP*PHINS*1.5_DP*SQRT(A_VALUE))*H_DERIV/H_PARAM+ &                             !Thickness Gradient
                               & (2.0_DP*PHINS*1.5_DP*SQRT(A_VALUE))*E_DERIV/E_PARAM) &                             !Elasticity Gradient
-                              & *beta/(2.0_DP*RHO_PARAM))*DXI_DX(1,1)+(-PHINS*Q_VALUE/A_VALUE**2.0_DP))*PHIMS      !Viscosity
+                              & *beta/(2.0_DP*RHO_PARAM))*DXI_DX(1,1)+(-PHINS*kappa*Q_VALUE/A_VALUE**2.0_DP))*PHIMS      !Viscosity
                             JACOBIAN_MATRIX%ELEMENT_JACOBIAN%MATRIX(mhs,nhs)= &
                               & JACOBIAN_MATRIX%ELEMENT_JACOBIAN%MATRIX(mhs,nhs)+SUM*JGW
                           END IF
@@ -8487,7 +8489,10 @@ CONTAINS
                           CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"...",ERR,ERROR,*999)
                           CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"Now export fields... ",ERR,ERROR,*999)
                           CALL FIELD_IO_NODES_EXPORT(DEPENDENT_REGION%FIELDS,FILENAME,METHOD,ERR,ERROR,*999)
-                          CALL FIELD_IO_ELEMENTS_EXPORT(DEPENDENT_REGION%FIELDS,FILENAME,METHOD,ERR,ERROR,*999)
+                          ! Only export elements on first iteration (non-moving mesh case)
+                          IF(CURRENT_LOOP_ITERATION==0) THEN
+                            CALL FIELD_IO_ELEMENTS_EXPORT(DEPENDENT_REGION%FIELDS,FILENAME,METHOD,ERR,ERROR,*999)
+                          ENDIF
                           CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,FILENAME,ERR,ERROR,*999)
                           CALL WRITE_STRING(GENERAL_OUTPUT_TYPE,"...",ERR,ERROR,*999)
                           CALL FIELD_NUMBER_OF_COMPONENTS_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD,FIELD_U_VARIABLE_TYPE, &
@@ -12692,6 +12697,11 @@ CONTAINS
               ! Calculate new area value based on W1, W2 and update dof
               ABoundary = (((2.0_DP*rho)/(beta))**2.0_DP)* &
                & (((W1-W2)/8.0_DP+SQRT(beta/(2.0_DP*rho))*((A0)**0.25_DP))**4.0_DP)
+              IF(ABoundary < ZERO_TOLERANCE) THEN
+                localError="Negative area 1D non-reflecting boundary detected at node "//TRIM(NUMBER_TO_VSTRING(nodeIdx, &
+                 & "*",err,error))//"."
+                CALL FLAG_ERROR(localError,err,error,*999)                 
+              ENDIF
               CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField,FIELD_U_VARIABLE_TYPE, &
                & FIELD_VALUES_SET_TYPE,versionIdx,derivativeIdx,nodeIdx,2,ABoundary,err,error,*999)
 
@@ -12725,6 +12735,11 @@ CONTAINS
               ! Calculate new area value based on W1,W2 and update dof
               ABoundary = (((2.0_DP*rho)/(beta))**2.0_DP)* &
                 & (((W1-W2)/8.0_DP+SQRT(beta/(2.0_DP*rho))*((A0)**0.25_DP))**4.0_DP)
+              IF(ABoundary < ZERO_TOLERANCE) THEN
+                localError="Negative area coupled 1D0D boundary detected at node "//TRIM(NUMBER_TO_VSTRING(nodeIdx, &
+                 & "*",err,error))//"."
+                CALL FLAG_ERROR(localError,err,error,*999)                 
+              ENDIF
               CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField,FIELD_U_VARIABLE_TYPE, &
                 & FIELD_VALUES_SET_TYPE,versionIdx,derivativeIdx,nodeIdx,2,ABoundary,err,error,*999)
 

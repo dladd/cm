@@ -525,9 +525,15 @@ CONTAINS
                 IF(ASSOCIATED(SOLVERS)) THEN
                   DO solver_idx=1,SOLVERS%NUMBER_OF_SOLVERS
                     SOLVER=>SOLVERS%SOLVERS(solver_idx)%PTR
-                    
-                    CALL PROBLEM_SOLVER_SOLVE(SOLVER,ERR,ERROR,*999)
-                    
+                    IF(ASSOCIATED(SOLVER)) THEN
+                      IF(ASSOCIATED(SOLVER%SOLVER_EQUATIONS)) THEN
+                        CALL PROBLEM_SOLVER_LOAD_INCREMENT_APPLY(SOLVER%SOLVER_EQUATIONS,1, &
+                          & 1,ERR,ERROR,*999)
+                      ENDIF
+                      CALL PROBLEM_SOLVER_SOLVE(SOLVER,ERR,ERROR,*999)
+                    ELSE
+                      CALL FLAG_ERROR("Solver is not associated.",ERR,ERROR,*999)
+                    ENDIF
                   ENDDO !solver_idx
                 ELSE
                   CALL FLAG_ERROR("Control loop solvers is not associated.",ERR,ERROR,*999)
@@ -1271,6 +1277,8 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: equations_set_idx,solver_matrix_idx
     TYPE(EQUATIONS_SET_TYPE), POINTER :: EQUATIONS_SET
+    TYPE(SOLVER_TYPE), POINTER :: CELLML_SOLVER
+    TYPE(NEWTON_SOLVER_TYPE), POINTER :: NEWTON_SOLVER
     TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: SOLVER_equations
     TYPE(SOLVER_MAPPING_TYPE), POINTER :: SOLVER_MAPPING
     TYPE(SOLVER_MATRICES_TYPE), POINTER :: SOLVER_MATRICES
@@ -1312,6 +1320,17 @@ CONTAINS
                 IF(LINKING_SOLVER%SOLVE_TYPE==SOLVER_DYNAMIC_TYPE) THEN
                   !Update the field values from the dynamic factor * current solver values AND add in mean predicted displacements/
                   CALL SOLVER_VARIABLES_DYNAMIC_NONLINEAR_UPDATE(SOLVER,ERR,ERROR,*999)
+                !check for a linked CellML solver 
+!!TODO: This should be generalised for nonlinear solvers in general and not just Newton solvers.
+                  NEWTON_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER
+                  IF(ASSOCIATED(NEWTON_SOLVER)) THEN
+                    CELLML_SOLVER=>NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
+                    IF(ASSOCIATED(CELLML_SOLVER)) THEN
+                      CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                    ENDIF
+                  ELSE
+                    CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*999)
+                  ENDIF
                   !Calculate the Jacobian
                   DO equations_set_idx=1,SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
                     EQUATIONS_SET=>SOLVER_MAPPING%EQUATIONS_SETS(equations_set_idx)%PTR
@@ -1327,6 +1346,17 @@ CONTAINS
                 !Otherwise perform as steady nonlinear
                 !Copy the current solution vector to the dependent field
                 CALL SOLVER_VARIABLES_FIELD_UPDATE(SOLVER,ERR,ERROR,*999)
+                !check for a linked CellML solver 
+!!TODO: This should be generalised for nonlinear solvers in general and not just Newton solvers.
+                NEWTON_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER
+                IF(ASSOCIATED(NEWTON_SOLVER)) THEN
+                  CELLML_SOLVER=>NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
+                  IF(ASSOCIATED(CELLML_SOLVER)) THEN
+                    CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                  ENDIF
+                ELSE
+                  CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*999)
+                ENDIF
                 !Calculate the Jacobian
                 DO equations_set_idx=1,SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
                   EQUATIONS_SET=>SOLVER_MAPPING%EQUATIONS_SETS(equations_set_idx)%PTR
@@ -1381,6 +1411,7 @@ CONTAINS
     INTEGER(INTG) :: equations_set_idx,solver_matrix_idx
     TYPE(EQUATIONS_SET_TYPE), POINTER :: EQUATIONS_SET
     TYPE(SOLVER_TYPE), POINTER :: CELLML_SOLVER,LINKING_SOLVER
+    TYPE(NEWTON_SOLVER_TYPE), POINTER :: NEWTON_SOLVER
     TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: SOLVER_EQUATIONS
     TYPE(SOLVER_MAPPING_TYPE), POINTER :: SOLVER_MAPPING
     TYPE(SOLVER_MATRICES_TYPE), POINTER :: SOLVER_MATRICES
@@ -1428,10 +1459,16 @@ CONTAINS
                   CALL SOLVER_VARIABLES_DYNAMIC_NONLINEAR_UPDATE(SOLVER,ERR,ERROR,*999)
                   !Caculate the strain field for an CellML evaluator solver
                   CALL PROBLEM_PRE_RESIDUAL_EVALUATE(SOLVER,ERR,ERROR,*999)
-                  !check for a linked CellML solver 
-                  CELLML_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
-                  IF(ASSOCIATED(CELLML_SOLVER)) THEN
-                    CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                  !check for a linked CellML solver
+                  !!TODO: This should be generalised for nonlinear solvers in general and not just Newton solvers.
+                  NEWTON_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER
+                  IF(ASSOCIATED(NEWTON_SOLVER)) THEN
+                    CELLML_SOLVER=>NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
+                    IF(ASSOCIATED(CELLML_SOLVER)) THEN
+                      CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                    ENDIF
+                  ELSE
+                    CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*999)
                   ENDIF
                   !Calculate the residual for each element (M, C, K and g)
                   DO equations_set_idx=1,SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
@@ -1457,9 +1494,15 @@ CONTAINS
                 !Caculate the strain field for an CellML evaluator solver
                 CALL PROBLEM_PRE_RESIDUAL_EVALUATE(SOLVER,ERR,ERROR,*999)
                 !check for a linked CellML solver 
-                CELLML_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
-                IF(ASSOCIATED(CELLML_SOLVER)) THEN
-                  CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+!!TODO: This should be generalised for nonlinear solvers in general and not just Newton solvers.
+                NEWTON_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER
+                IF(ASSOCIATED(NEWTON_SOLVER)) THEN
+                  CELLML_SOLVER=>NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER
+                  IF(ASSOCIATED(CELLML_SOLVER)) THEN
+                    CALL SOLVER_SOLVE(CELLML_SOLVER,ERR,ERROR,*999)
+                  ENDIF
+                ELSE
+                  CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*999)
                 ENDIF
                 !Make sure the equations sets are up to date
                 DO equations_set_idx=1,SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
@@ -1999,8 +2042,7 @@ CONTAINS
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
     TYPE(VARYING_STRING) :: LOCAL_ERROR
-    TYPE(PROBLEM_TYPE) :: PROBLEM
- 
+
     CALL ENTERS("PROBLEM_CONTROL_LOOP_POST_LOOP",ERR,ERROR,*999)
 
     IF(ASSOCIATED(CONTROL_LOOP)) THEN
@@ -3952,10 +3994,10 @@ END MODULE PROBLEM_ROUTINES
 !
 
 !>Called from the PETSc SNES solvers to evaluate the Jacobian for a Newton like nonlinear solver
-SUBROUTINE PROBLEM_SOLVER_JACOBIAN_EVALUATE_PETSC(SNES,X,A,B,FLAG,CTX,ERR)
+SUBROUTINE Problem_SolverJacobianEvaluatePetsc(snes,x,A,B,ctx,err)
 
   USE BASE_ROUTINES
-  USE CMISS_PETSC_TYPES
+  USE CmissPetscTypes
   USE DISTRIBUTED_MATRIX_VECTOR
   USE ISO_VARYING_STRING
   USE KINDS
@@ -3965,91 +4007,91 @@ SUBROUTINE PROBLEM_SOLVER_JACOBIAN_EVALUATE_PETSC(SNES,X,A,B,FLAG,CTX,ERR)
   USE TYPES
 
   IMPLICIT NONE
-  
+ 
   !Argument variables
-  TYPE(PETSC_SNES_TYPE), INTENT(INOUT) :: SNES !<The PETSc SNES
-  TYPE(PETSC_VEC_TYPE), INTENT(INOUT) :: X !<The PETSc X Vec
-  TYPE(PETSC_MAT_TYPE), INTENT(INOUT) :: A !<The PETSc A Mat
-  TYPE(PETSC_MAT_TYPE), INTENT(INOUT) :: B !<The PETSc B Mat
-  INTEGER(INTG) :: FLAG !<The PETSC MatStructure flag
-  TYPE(SOLVER_TYPE), POINTER :: CTX !<The passed through context
-  INTEGER(INTG), INTENT(INOUT) :: ERR !<The error code
+  TYPE(PetscSnesType), INTENT(INOUT) :: snes !<The PETSc snes
+  TYPE(PetscVecType), INTENT(INOUT) :: X !<The PETSc x Vec
+  TYPE(PetscMatType), INTENT(INOUT) :: A !<The PETSc A Mat
+  TYPE(PetscMatType), INTENT(INOUT) :: B !<The PETSc B Mat
+  TYPE(SOLVER_TYPE), POINTER :: ctx !<The passed through context
+  INTEGER(INTG), INTENT(INOUT) :: err !<The error code
   !Local Variables
-  INTEGER(INTG) :: DUMMY_ERR
-  TYPE(DISTRIBUTED_VECTOR_TYPE), POINTER :: SOLVER_VECTOR
-  TYPE(NEWTON_SOLVER_TYPE), POINTER :: NEWTON_SOLVER
-  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: NONLINEAR_SOLVER
-  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: SOLVER_EQUATIONS
-  TYPE(SOLVER_MATRICES_TYPE), POINTER :: SOLVER_MATRICES
-  TYPE(SOLVER_MATRIX_TYPE), POINTER :: SOLVER_MATRIX
-  TYPE(VARYING_STRING) :: DUMMY_ERROR,ERROR,LOCAL_ERROR
+  INTEGER(INTG) :: dummyErr
+  TYPE(DISTRIBUTED_VECTOR_TYPE), POINTER :: solverVector
+  TYPE(NEWTON_SOLVER_TYPE), POINTER :: newtonSolver
+  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: nonlinearSolver
+  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: solverEquations
+  TYPE(SOLVER_MATRICES_TYPE), POINTER :: solverMatrices
+  TYPE(SOLVER_MATRIX_TYPE), POINTER :: solverMatrix
+  TYPE(VARYING_STRING) :: dummyError,error,localError
 
-  IF(ASSOCIATED(CTX)) THEN
-    NONLINEAR_SOLVER=>CTX%NONLINEAR_SOLVER
-    IF(ASSOCIATED(NONLINEAR_SOLVER)) THEN
-      NEWTON_SOLVER=>NONLINEAR_SOLVER%NEWTON_SOLVER
-      IF(ASSOCIATED(NEWTON_SOLVER)) THEN
-        SOLVER_EQUATIONS=>CTX%SOLVER_EQUATIONS
-        IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
-          SOLVER_MATRICES=>SOLVER_EQUATIONS%SOLVER_MATRICES
-          IF(ASSOCIATED(SOLVER_MATRICES)) THEN
-            IF(SOLVER_MATRICES%NUMBER_OF_MATRICES==1) THEN
-              SOLVER_MATRIX=>SOLVER_MATRICES%MATRICES(1)%PTR
-              IF(ASSOCIATED(SOLVER_MATRIX)) THEN
-                SOLVER_VECTOR=>SOLVER_MATRIX%SOLVER_VECTOR
-                IF(ASSOCIATED(SOLVER_VECTOR)) THEN
-                  CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(SOLVER_VECTOR,X,ERR,ERROR,*999)
+  IF(ASSOCIATED(ctx)) THEN
+    nonlinearSolver=>ctx%NONLINEAR_SOLVER
+    IF(ASSOCIATED(nonlinearSolver)) THEN
+      newtonSolver=>nonlinearSolver%NEWTON_SOLVER
+      IF(ASSOCIATED(newtonSolver)) THEN
+        solverEquations=>ctx%SOLVER_EQUATIONS
+        IF(ASSOCIATED(solverEquations)) THEN
+          solverMatrices=>solverEquations%SOLVER_MATRICES
+          IF(ASSOCIATED(solverMatrices)) THEN
+            IF(solverMatrices%NUMBER_OF_MATRICES==1) THEN
+              solverMatrix=>solverMatrices%matrices(1)%ptr
+              IF(ASSOCIATED(solverMatrix)) THEN
+                solverVector=>solverMatrix%SOLVER_VECTOR
+                IF(ASSOCIATED(solverVector)) THEN
+                  CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(solverVector,x,err,error,*999)
                   
-                  CALL PROBLEM_SOLVER_JACOBIAN_EVALUATE(CTX,ERR,ERROR,*999)
+                  CALL PROBLEM_SOLVER_JACOBIAN_EVALUATE(ctx,err,error,*999)
                   
-                  CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(SOLVER_VECTOR,ERR,ERROR,*999)
+                  CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(solverVector,err,error,*999)
                 ELSE
-                  CALL FLAG_ERROR("Solver vector is not associated.",ERR,ERROR,*998)              
+                  CALL FlagError("Solver vector is not associated.",err,error,*998)              
                 ENDIF
               ELSE
-                CALL FLAG_ERROR("Solver matrix is not associated.",ERR,ERROR,*998)
+                CALL FlagError("Solver matrix is not associated.",err,error,*998)
               ENDIF
             ELSE
-              LOCAL_ERROR="The number of solver matrices of "// &
-                & TRIM(NUMBER_TO_VSTRING(SOLVER_MATRICES%NUMBER_OF_MATRICES,"*",ERR,ERROR))// &
+              localError="The number of solver matrices of "// &
+                & TRIM(NumberToVString(solverMatrices%NUMBER_OF_MATRICES,"*",err,error))// &
                 & " is invalid. There should be 1 solver matrix."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*998)
+              CALL FlagError(localError,err,error,*998)
             ENDIF
           ELSE
-            CALL FLAG_ERROR("Solver equations solver matrices is not associated.",ERR,ERROR,*998)
+            CALL FlagError("Solver equations solver matrices is not associated.",err,error,*998)
           ENDIF
         ELSE
-          CALL FLAG_ERROR("Solver solver equations is not associated.",ERR,ERROR,*998)
+          CALL FlagError("Solver solver equations is not associated.",err,error,*998)
         ENDIF
 !!TODO: move this to PROBLEM_SOLVER_JACOBIAN_EVALUATE or elsewhere?
-        NEWTON_SOLVER%TOTAL_NUMBER_OF_JACOBIAN_EVALUATIONS=NEWTON_SOLVER%TOTAL_NUMBER_OF_JACOBIAN_EVALUATIONS+1
+        newtonSolver%TOTAL_NUMBER_OF_JACOBIAN_EVALUATIONS=newtonSolver%TOTAL_NUMBER_OF_JACOBIAN_EVALUATIONS+1
       ELSE
-        CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*997)
+        CALL FlagError("Nonlinear solver Newton solver is not associated.",err,error,*997)
       ENDIF
     ELSE
-      CALL FLAG_ERROR("Solver nonlinear solver is not associated.",ERR,ERROR,*998)
+      CALL FlagError("Solver nonlinear solver is not associated.",err,error,*998)
     ENDIF
   ELSE
-    CALL FLAG_ERROR("Solver context is not associated.",ERR,ERROR,*998)
+    CALL FlagError("Solver context is not associated.",err,error,*998)
   ENDIF
   
   RETURN
-999 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(SOLVER_VECTOR,DUMMY_ERR,DUMMY_ERROR,*998)
-998 CALL WRITE_ERROR(ERR,ERROR,*997)
-997 CALL FLAG_WARNING("Error evaluating nonlinear Jacobian.",ERR,ERROR,*996)
+999 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(solverVector,dummyErr,dummyError,*998)
+998 CALL WriteError(err,error,*997)
+997 CALL FlagWarning("Error evaluating nonlinear Jacobian.",err,error,*996)
 996 RETURN 
-END SUBROUTINE PROBLEM_SOLVER_JACOBIAN_EVALUATE_PETSC
+END SUBROUTINE Problem_SolverJacobianEvaluatePetsc
 
 !
 !================================================================================================================================
 !
 
-!>Called from the PETSc SNES solvers to evaluate the Jacobian for a Newton like nonlinear solver using PETSc's FD Jacobian calculation
-SUBROUTINE PROBLEM_SOLVER_JACOBIAN_FD_CALCULATE_PETSC(SNES,X,A,B,FLAG,CTX,ERR)
+!>Called from the PETSc SNES solvers to evaluate the Jacobian for a Newton like nonlinear solver using PETSc's FD Jacobian
+!>calculation.
+SUBROUTINE Problem_SolverJacobianFDCalculatePetsc(snes,x,A,B,ctx,err)
 
   USE BASE_ROUTINES
   USE CMISS_PETSC
-  USE CMISS_PETSC_TYPES
+  USE CmissPetscTypes
   USE DISTRIBUTED_MATRIX_VECTOR
   USE ISO_VARYING_STRING
   USE KINDS
@@ -4062,103 +4104,102 @@ SUBROUTINE PROBLEM_SOLVER_JACOBIAN_FD_CALCULATE_PETSC(SNES,X,A,B,FLAG,CTX,ERR)
   IMPLICIT NONE
 
   !Argument variables
-  TYPE(PETSC_SNES_TYPE), INTENT(INOUT) :: SNES !<The PETSc SNES
-  TYPE(PETSC_VEC_TYPE), INTENT(INOUT) :: X !<The PETSc X Vec
-  TYPE(PETSC_MAT_TYPE), INTENT(INOUT) :: A !<The PETSc A Mat
-  TYPE(PETSC_MAT_TYPE), INTENT(INOUT) :: B !<The PETSc B Mat
-  INTEGER(INTG) :: FLAG !<The PETSC MatStructure flag
-  TYPE(SOLVER_TYPE), POINTER :: CTX !<The passed through context
-  INTEGER(INTG), INTENT(INOUT) :: ERR !<The error code
+  TYPE(PetscSnesType), INTENT(INOUT) :: snes !<The PETSc SNES
+  TYPE(PetscVecType), INTENT(INOUT) :: x !<The PETSc x Vec
+  TYPE(PetscMatType), INTENT(INOUT) :: A !<The PETSc A Mat
+  TYPE(PetscMatType), INTENT(INOUT) :: B !<The PETSc B Mat
+  TYPE(SOLVER_TYPE), POINTER :: ctx !<The passed through context
+  INTEGER(INTG), INTENT(INOUT) :: err !<The error code
   !Local Variables
-  INTEGER(INTG) :: DUMMY_ERR
-  TYPE(NEWTON_SOLVER_TYPE), POINTER :: NEWTON_SOLVER
-  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: NONLINEAR_SOLVER
-  TYPE(NEWTON_LINESEARCH_SOLVER_TYPE), POINTER :: LINESEARCH_SOLVER
-  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: SOLVER_EQUATIONS
-  TYPE(SOLVER_MATRICES_TYPE), POINTER :: SOLVER_MATRICES
-  TYPE(SOLVER_MATRIX_TYPE), POINTER :: SOLVER_MATRIX
-  TYPE(PETSC_MATFDCOLORING_TYPE), POINTER :: JACOBIAN_FDCOLORING
-  TYPE(VARYING_STRING) :: DUMMY_ERROR,ERROR,LOCAL_ERROR
+  INTEGER(INTG) :: dummyErr
+  TYPE(NEWTON_SOLVER_TYPE), POINTER :: newtonSolver
+  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: nonlinearSolver
+  TYPE(NEWTON_LINESEARCH_SOLVER_TYPE), POINTER :: linesearchSolver
+  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: solverEquations
+  TYPE(SOLVER_MATRICES_TYPE), POINTER :: solverMatrices
+  TYPE(SOLVER_MATRIX_TYPE), POINTER :: solverMatrix
+  TYPE(PetscMatFDColoringType), POINTER :: jacobianMatFDColoring
+  TYPE(VARYING_STRING) :: dummyError,error,localError
 
-  IF(ASSOCIATED(CTX)) THEN
-    NONLINEAR_SOLVER=>CTX%NONLINEAR_SOLVER
-    IF(ASSOCIATED(NONLINEAR_SOLVER)) THEN
-      NEWTON_SOLVER=>NONLINEAR_SOLVER%NEWTON_SOLVER
-      IF(ASSOCIATED(NEWTON_SOLVER)) THEN
-        LINESEARCH_SOLVER=>NEWTON_SOLVER%LINESEARCH_SOLVER
-        IF(ASSOCIATED(LINESEARCH_SOLVER)) THEN
-          SOLVER_EQUATIONS=>CTX%SOLVER_EQUATIONS
-          IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
-            SOLVER_MATRICES=>SOLVER_EQUATIONS%SOLVER_MATRICES
-            IF(ASSOCIATED(SOLVER_MATRICES)) THEN
-              IF(SOLVER_MATRICES%NUMBER_OF_MATRICES==1) THEN
-                SOLVER_MATRIX=>SOLVER_MATRICES%MATRICES(1)%PTR
-                IF(ASSOCIATED(SOLVER_MATRIX)) THEN
-                  SELECT CASE(SOLVER_EQUATIONS%SPARSITY_TYPE)
+  IF(ASSOCIATED(ctx)) THEN
+    nonlinearSolver=>ctx%NONLINEAR_SOLVER
+    IF(ASSOCIATED(nonlinearSolver)) THEN
+      newtonSolver=>nonlinearSolver%NEWTON_SOLVER
+      IF(ASSOCIATED(newtonSolver)) THEN
+        linesearchSolver=>newtonSolver%LINESEARCH_SOLVER
+        IF(ASSOCIATED(linesearchSolver)) THEN
+          solverEquations=>ctx%SOLVER_EQUATIONS
+          IF(ASSOCIATED(solverEquations)) THEN
+            solverMatrices=>solverEquations%SOLVER_MATRICES
+            IF(ASSOCIATED(solverMatrices)) THEN
+              IF(solverMatrices%NUMBER_OF_MATRICES==1) THEN
+                solverMatrix=>solverMatrices%matrices(1)%ptr
+                IF(ASSOCIATED(solverMatrix)) THEN
+                  SELECT CASE(solverEquations%SPARSITY_TYPE)
                   CASE(SOLVER_SPARSE_MATRICES)
-                    JACOBIAN_FDCOLORING=>LINESEARCH_SOLVER%JACOBIAN_FDCOLORING
-                    IF(ASSOCIATED(JACOBIAN_FDCOLORING)) THEN
-                      CALL PETSC_SNESDEFAULTCOMPUTEJACOBIANCOLOR(SNES,X,A,B,FLAG,JACOBIAN_FDCOLORING,ERR,ERROR,*999)
+                    jacobianMatFDColoring=>linesearchSolver%jacobianMatFDColoring
+                    IF(ASSOCIATED(jacobianMatFDColoring)) THEN
+                      CALL Petsc_SnesDefaultComputeJacobianColor(snes,x,A,B,jacobianMatFDColoring,err,error,*999)
                     ELSE
-                      CALL FLAG_ERROR("Linesearch solver FD colouring is not associated.",ERR,ERROR,*998)
+                      CALL FlagError("Linesearch solver FD colouring is not associated.",err,error,*998)
                     ENDIF
                   CASE(SOLVER_FULL_MATRICES)
-                    CALL PETSC_SNESDEFAULTCOMPUTEJACOBIAN(SNES,X,A,B,FLAG,CTX,ERR,ERROR,*999)
+                    CALL Petsc_SnesDefaultComputeJacobian(snes,x,A,B,ctx,err,error,*999)
                   CASE DEFAULT
-                    LOCAL_ERROR="The specified solver equations sparsity type of "// &
-                      & TRIM(NUMBER_TO_VSTRING(SOLVER_EQUATIONS%SPARSITY_TYPE,"*",ERR,ERROR))//" is invalid."
-                    CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                    localError="The specified solver equations sparsity type of "// &
+                      & TRIM(NumberToVString(solverEquations%SPARSITY_TYPE,"*",err,error))//" is invalid."
+                    CALL FlagError(localError,err,error,*999)
                   END SELECT
-                  IF(CTX%OUTPUT_TYPE>=SOLVER_MATRIX_OUTPUT) THEN
-                    CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_ON(SOLVER_MATRICES%MATRICES(1)%PTR%MATRIX,A,ERR,ERROR,*999)
-                    CALL SOLVER_MATRICES_OUTPUT(GENERAL_OUTPUT_TYPE,SOLVER_MATRICES_JACOBIAN_ONLY,SOLVER_MATRICES,ERR,ERROR,*998)
-                    CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_OFF(SOLVER_MATRICES%MATRICES(1)%PTR%MATRIX,ERR,ERROR,*999)
+                  IF(ctx%OUTPUT_TYPE>=SOLVER_MATRIX_OUTPUT) THEN
+                    CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_ON(solverMatrices%matrices(1)%ptr%matrix,A,err,error,*999)
+                    CALL SOLVER_MATRICES_OUTPUT(GENERAL_OUTPUT_TYPE,SOLVER_MATRICES_JACOBIAN_ONLY,solverMatrices,err,error,*998)
+                    CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_OFF(solverMatrices%matrices(1)%ptr%matrix,err,error,*999)
                   ENDIF
 
                 ELSE
-                  CALL FLAG_ERROR("Solver matrix is not associated.",ERR,ERROR,*998)
+                  CALL FlagError("Solver matrix is not associated.",err,error,*998)
                 ENDIF
               ELSE
-                LOCAL_ERROR="The number of solver matrices of "// &
-                  & TRIM(NUMBER_TO_VSTRING(SOLVER_MATRICES%NUMBER_OF_MATRICES,"*",ERR,ERROR))// &
+                localError="The number of solver matrices of "// &
+                  & TRIM(NumberToVString(solverMatrices%NUMBER_OF_MATRICES,"*",err,error))// &
                   & " is invalid. There should be 1 solver matrix."
-                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*998)
+                CALL FlagError(localError,err,error,*998)
               ENDIF
             ELSE
-              CALL FLAG_ERROR("Solver equations solver matrices is not associated.",ERR,ERROR,*998)
+              CALL FlagError("Solver equations solver matrices is not associated.",err,error,*998)
             ENDIF
           ELSE
-            CALL FLAG_ERROR("Solver solver equations is not associated.",ERR,ERROR,*998)
+            CALL FlagError("Solver solver equations is not associated.",err,error,*998)
           ENDIF
         ELSE
-          CALL FLAG_ERROR("Solver is not associated.",ERR,ERROR,*998)
+          CALL FlagError("Solver is not associated.",err,error,*998)
         ENDIF
       ELSE
-        CALL FLAG_ERROR("Nonlinear solver is not associated.",ERR,ERROR,*998)
+        CALL FlagError("Nonlinear solver is not associated.",err,error,*998)
       ENDIF
     ELSE
-      CALL FLAG_ERROR("Newton solver is not associated.",ERR,ERROR,*998)
+      CALL FlagError("Newton solver is not associated.",err,error,*998)
     ENDIF
   ELSE
-    CALL FLAG_ERROR("Newton linesearch solver context is not associated.",ERR,ERROR,*998)
+    CALL FlagError("Newton linesearch solver context is not associated.",err,error,*998)
   ENDIF
 
   RETURN
-999 CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_OFF(SOLVER_MATRIX%MATRIX,DUMMY_ERR,DUMMY_ERROR,*998)
-998 CALL WRITE_ERROR(ERR,ERROR,*997)
-997 CALL FLAG_WARNING("Error evaluating nonlinear Jacobian.",ERR,ERROR,*996)
+999 CALL DISTRIBUTED_MATRIX_OVERRIDE_SET_OFF(solverMatrix%matrix,dummyErr,dummyError,*998)
+998 CALL WriteError(err,error,*997)
+997 CALL FlagWarning("Error evaluating nonlinear Jacobian.",err,error,*996)
 996 RETURN
-END SUBROUTINE PROBLEM_SOLVER_JACOBIAN_FD_CALCULATE_PETSC
+END SUBROUTINE Problem_SolverJacobianFDCalculatePetsc
 
 !
 !================================================================================================================================
 !
 
 !>Called from the PETSc SNES solvers to evaluate the residual for a Newton like nonlinear solver
-SUBROUTINE PROBLEM_SOLVER_RESIDUAL_EVALUATE_PETSC(SNES,X,F,CTX,ERR)
+SUBROUTINE Problem_SolverResidualEvaluatePetsc(snes,x,f,ctx,err)
 
   USE BASE_ROUTINES
-  USE CMISS_PETSC_TYPES
+  USE CmissPetscTypes
   USE DISTRIBUTED_MATRIX_VECTOR
   USE ISO_VARYING_STRING
   USE KINDS
@@ -4169,95 +4210,95 @@ SUBROUTINE PROBLEM_SOLVER_RESIDUAL_EVALUATE_PETSC(SNES,X,F,CTX,ERR)
   IMPLICIT NONE
   
   !Argument variables
-  TYPE(PETSC_SNES_TYPE), INTENT(INOUT) :: SNES !<The PETSc SNES type
-  TYPE(PETSC_VEC_TYPE), INTENT(INOUT) :: X !<The PETSc X Vec type
-  TYPE(PETSC_VEC_TYPE), INTENT(INOUT) :: F !<The PETSc F Vec type
-  TYPE(SOLVER_TYPE), POINTER :: CTX !<The passed through context
-  INTEGER(INTG), INTENT(INOUT) :: ERR !<The error code
+  TYPE(PetscSnesType), INTENT(INOUT) :: snes !<The PETSc snes type
+  TYPE(PetscVecType), INTENT(INOUT) :: x !<The PETSc x Vec type
+  TYPE(PetscVecType), INTENT(INOUT) :: f !<The PETSc f Vec type
+  TYPE(SOLVER_TYPE), POINTER :: ctx !<The passed through context
+  INTEGER(INTG), INTENT(INOUT) :: err !<The error code
   !Local Variables
-  INTEGER(INTG) :: DUMMY_ERR
-  TYPE(DISTRIBUTED_VECTOR_TYPE), POINTER :: RESIDUAL_VECTOR,SOLVER_VECTOR
-  TYPE(NEWTON_SOLVER_TYPE), POINTER :: NEWTON_SOLVER
-  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: NONLINEAR_SOLVER
-  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: SOLVER_EQUATIONS
-  TYPE(SOLVER_MATRICES_TYPE), POINTER :: SOLVER_MATRICES
-  TYPE(SOLVER_MATRIX_TYPE), POINTER :: SOLVER_MATRIX
-  TYPE(VARYING_STRING) :: DUMMY_ERROR,ERROR,LOCAL_ERROR
+  INTEGER(INTG) :: dummyErr
+  TYPE(DISTRIBUTED_VECTOR_TYPE), POINTER :: residualVector,solverVector
+  TYPE(NEWTON_SOLVER_TYPE), POINTER :: newtonSolver
+  TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: nonlinearSolver
+  TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: solverEquations
+  TYPE(SOLVER_MATRICES_TYPE), POINTER :: solverMatrices
+  TYPE(SOLVER_MATRIX_TYPE), POINTER :: solverMatrix
+  TYPE(VARYING_STRING) :: dummyError,error,localError
 
-  IF(ASSOCIATED(CTX)) THEN
-    NONLINEAR_SOLVER=>CTX%NONLINEAR_SOLVER
-    IF(ASSOCIATED(NONLINEAR_SOLVER)) THEN
-      NEWTON_SOLVER=>NONLINEAR_SOLVER%NEWTON_SOLVER
-      IF(ASSOCIATED(NEWTON_SOLVER)) THEN
-        SOLVER_EQUATIONS=>CTX%SOLVER_EQUATIONS
-        IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
-          SOLVER_MATRICES=>SOLVER_EQUATIONS%SOLVER_MATRICES
-          IF(ASSOCIATED(SOLVER_MATRICES)) THEN
-            IF(SOLVER_MATRICES%NUMBER_OF_MATRICES==1) THEN
-              SOLVER_MATRIX=>SOLVER_MATRICES%MATRICES(1)%PTR
-              IF(ASSOCIATED(SOLVER_MATRIX)) THEN
-                SOLVER_VECTOR=>SOLVER_MATRIX%SOLVER_VECTOR
-                IF(ASSOCIATED(SOLVER_VECTOR)) THEN
-                  RESIDUAL_VECTOR=>SOLVER_MATRICES%RESIDUAL
-                  IF(ASSOCIATED(RESIDUAL_VECTOR)) THEN
-                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(SOLVER_VECTOR,X,ERR,ERROR,*999)
-                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(RESIDUAL_VECTOR,F,ERR,ERROR,*999)                
+  IF(ASSOCIATED(ctx)) THEN
+    nonlinearSolver=>ctx%NONLINEAR_SOLVER
+    IF(ASSOCIATED(nonlinearSolver)) THEN
+      newtonSolver=>nonlinearSolver%NEWTON_SOLVER
+      IF(ASSOCIATED(newtonSolver)) THEN
+        solverEquations=>ctx%SOLVER_EQUATIONS
+        IF(ASSOCIATED(solverEquations)) THEN
+          solverMatrices=>solverEquations%SOLVER_MATRICES
+          IF(ASSOCIATED(solverMatrices)) THEN
+            IF(solverMatrices%NUMBER_OF_MATRICES==1) THEN
+              solverMatrix=>solverMatrices%MATRICES(1)%PTR
+              IF(ASSOCIATED(solverMatrix)) THEN
+                solverVector=>solverMatrix%SOLVER_VECTOR
+                IF(ASSOCIATED(solverVector)) THEN
+                  residualVector=>solverMatrices%RESIDUAL
+                  IF(ASSOCIATED(residualVector)) THEN
+                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(solverVector,X,err,error,*999)
+                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_ON(residualVector,F,err,error,*999)                
                     
-                    CALL PROBLEM_SOLVER_RESIDUAL_EVALUATE(CTX,ERR,ERROR,*999)
+                    CALL PROBLEM_SOLVER_RESIDUAL_EVALUATE(ctx,err,error,*999)
                     
-                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(SOLVER_VECTOR,ERR,ERROR,*999)
-                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(RESIDUAL_VECTOR,ERR,ERROR,*999)                
+                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(solverVector,err,error,*999)
+                    CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(residualVector,err,error,*999)                
                   ELSE
-                    CALL FLAG_ERROR("Residual vector is not associated.",ERR,ERROR,*997)                
+                    CALL FlagError("Residual vector is not associated.",err,error,*997)                
                   ENDIF
                 ELSE
-                  CALL FLAG_ERROR("Solver vector is not associated.",ERR,ERROR,*997)
+                  CALL FlagError("Solver vector is not associated.",err,error,*997)
                 ENDIF
               ELSE
-                CALL FLAG_ERROR("Solver matrix is not associated.",ERR,ERROR,*997)
+                CALL FlagError("Solver matrix is not associated.",err,error,*997)
               ENDIF
             ELSE
-              LOCAL_ERROR="The number of solver matrices of "// &
-                & TRIM(NUMBER_TO_VSTRING(SOLVER_MATRICES%NUMBER_OF_MATRICES,"*",ERR,ERROR))// &
+              localError="The number of solver matrices of "// &
+                & TRIM(NumberToVString(solverMatrices%NUMBER_OF_MATRICES,"*",err,error))// &
                 & " is invalid. There should be 1 solver matrix."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*997)          
+              CALL FlagError(localError,err,error,*997)          
             ENDIF
           ELSE
-            CALL FLAG_ERROR("Solver equations solver matrices is not associated.",ERR,ERROR,*997)
+            CALL FlagError("Solver equations solver matrices is not associated.",err,error,*997)
           ENDIF
         ELSE
-          CALL FLAG_ERROR("Solver solver equations is not associated.",ERR,ERROR,*997)
+          CALL FlagError("Solver solver equations is not associated.",err,error,*997)
         ENDIF
 !!TODO: move this to PROBLEM_SOLVER_RESIDUAL_EVALUATE or elsewhere?
-        NEWTON_SOLVER%TOTAL_NUMBER_OF_FUNCTION_EVALUATIONS=NEWTON_SOLVER%TOTAL_NUMBER_OF_FUNCTION_EVALUATIONS+1
+        newtonSolver%TOTAL_NUMBER_OF_FUNCTION_EVALUATIONS=newtonSolver%TOTAL_NUMBER_OF_FUNCTION_EVALUATIONS+1
       ELSE
-        CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",ERR,ERROR,*997)
+        CALL FlagError("Nonlinear solver Newton solver is not associated.",err,error,*997)
       ENDIF
     ELSE
-      CALL FLAG_ERROR("Solver nonlinear solver is not associated.",ERR,ERROR,*997)
+      CALL FlagError("Solver nonlinear solver is not associated.",err,error,*997)
     ENDIF
   ELSE
-    CALL FLAG_ERROR("Solver context is not associated.",ERR,ERROR,*997)
+    CALL FlagError("Solver context is not associated.",err,error,*997)
   ENDIF
   
   RETURN
-999 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(SOLVER_VECTOR,DUMMY_ERR,DUMMY_ERROR,*998)  
-998 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(RESIDUAL_VECTOR,DUMMY_ERR,DUMMY_ERROR,*997)
-997 CALL WRITE_ERROR(ERR,ERROR,*996)
-996 CALL FLAG_WARNING("Error evaluating nonlinear residual.",ERR,ERROR,*995)
+999 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(solverVector,dummyErr,dummyError,*998)  
+998 CALL DISTRIBUTED_VECTOR_OVERRIDE_SET_OFF(residualVector,dummyErr,dummyError,*997)
+997 CALL WriteError(err,error,*996)
+996 CALL FlagWarning("Error evaluating nonlinear residual.",err,error,*995)
 995 RETURN
 
-END SUBROUTINE PROBLEM_SOLVER_RESIDUAL_EVALUATE_PETSC
+END SUBROUTINE Problem_SolverResidualEvaluatePetsc
 
 !
 !================================================================================================================================
 !
 
 !>Called from the PETSc SNES solvers to test convergence for a Newton like nonlinear solver
-SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,fnorm,reason,ctx,err)
+SUBROUTINE Problem_SolverConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,fnorm,reason,ctx,err)
 
   USE BASE_ROUTINES
-  USE CMISS_PETSC_TYPES
+  USE CmissPetscTypes
   USE DISTRIBUTED_MATRIX_VECTOR
   USE INPUT_OUTPUT
   USE KINDS
@@ -4270,7 +4311,7 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
   IMPLICIT NONE
   
   !Argument variables
-  TYPE(PETSC_SNES_TYPE), INTENT(INOUT) :: snes !<The PETSc SNES type
+  TYPE(PetscSnesType), INTENT(INOUT) :: snes !<The PETSc SNES type
   INTEGER(INTG), INTENT(INOUT) :: iterationNumber !< The current iteration (1 is the first and is before any Newton step)
   REAL(DP), INTENT(INOUT) :: xnorm !<The 2-norm of current iterate
   REAL(DP), INTENT(INOUT) :: gnorm !<The 2-norm of current step
@@ -4279,7 +4320,7 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
   TYPE(SOLVER_TYPE), POINTER :: ctx !<The passed through context
   INTEGER(INTG), INTENT(INOUT) :: err !<The error code
   !Local Variables
-  TYPE(PETSC_VEC_TYPE) :: x,f,y,w,g
+  TYPE(PetscVecType) :: x,f,y,w,g
   TYPE(NEWTON_SOLVER_TYPE), POINTER :: newtonSolver
   TYPE(NONLINEAR_SOLVER_TYPE), POINTER :: nonlinearSolver
   TYPE(PetscSnesLinesearchType) :: lineSearch
@@ -4287,7 +4328,7 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
   TYPE(VARYING_STRING) :: error,localError
 
   IF(ASSOCIATED(ctx)) THEN
-    nonlinearSolver=>CTX%NONLINEAR_SOLVER
+    nonlinearSolver=>ctx%NONLINEAR_SOLVER
     IF(ASSOCIATED(nonlinearSolver)) THEN
       newtonSolver=>nonlinearSolver%NEWTON_SOLVER
       IF(ASSOCIATED(newtonSolver)) THEN 
@@ -4326,38 +4367,38 @@ SUBROUTINE ProblemSolver_ConvergenceTestPetsc(snes,iterationNumber,xnorm,gnorm,f
             newtonSolver%convergenceTest%normalisedEnergy=0.0_DP
           ENDIF
         CASE(SOLVER_NEWTON_CONVERGENCE_DIFFERENTIATED_RATIO)
-          CALL FLAG_ERROR("Differentiated ratio convergence test not implemented.",err,error,*999)
+          CALL FlagError("Differentiated ratio convergence test not implemented.",err,error,*999)
         CASE DEFAULT
-          localError="The specified convergence test type of "//TRIM(NUMBER_TO_VSTRING( &
+          localError="The specified convergence test type of "//TRIM(NumberToVString( &
             & newtonSolver%convergenceTestType,"*",err,error))//" is invalid."
-          CALL FLAG_ERROR(localError,err,error,*999)
+          CALL FlagError(localError,err,error,*999)
         END SELECT
       ELSE
-        CALL FLAG_ERROR("Nonlinear solver Newton solver is not associated.",err,error,*999)
+        CALL FlagError("Nonlinear solver Newton solver is not associated.",err,error,*999)
       ENDIF
     ELSE
-      CALL FLAG_ERROR("Solver nonlinear solver is not associated.",err,error,*999)
+      CALL FlagError("Solver nonlinear solver is not associated.",err,error,*999)
     ENDIF
   ELSE
-    CALL FLAG_ERROR("Solver context is not associated.",err,error,*999)
+    CALL FlagError("Solver context is not associated.",err,error,*999)
   ENDIF
   
   RETURN
-999 CALL WRITE_ERROR(err,error,*998)
-998 CALL FLAG_WARNING("Error in convergence test.",err,error,*997)
+999 CALL WriteError(err,error,*998)
+998 CALL FlagWarning("Error in convergence test.",err,error,*997)
 997 RETURN    
 
-END SUBROUTINE ProblemSolver_ConvergenceTestPetsc
+END SUBROUTINE Problem_SolverConvergenceTestPetsc
 
 !
 !================================================================================================================================
 !
 
 !>Called from the PETSc SNES solvers to monitor a nonlinear solver
-SUBROUTINE Problem_SolverNonlinearMonitorPETSC(SNES,iterationNumber,residualNorm,context,err)
+SUBROUTINE Problem_SolverNonlinearMonitorPETSC(snes,iterationNumber,residualNorm,context,err)
 
   USE BASE_ROUTINES
-  USE CMISS_PETSC_TYPES
+  USE CmissPetscTypes
   USE DISTRIBUTED_MATRIX_VECTOR
   USE ISO_VARYING_STRING
   USE KINDS
@@ -4368,7 +4409,7 @@ SUBROUTINE Problem_SolverNonlinearMonitorPETSC(SNES,iterationNumber,residualNorm
   IMPLICIT NONE
   
   !Argument variables
-  TYPE(PETSC_SNES_TYPE), INTENT(INOUT) :: SNES !<The PETSc SNES type
+  TYPE(PetscSnesType), INTENT(INOUT) :: snes !<The PETSc snes type
   INTEGER(INTG), INTENT(INOUT) :: iterationNumber !<The iteration number
   REAL(DP), INTENT(INOUT) :: residualNorm !<The residual norm
   TYPE(SOLVER_TYPE), POINTER :: context !<The passed through context
@@ -4385,19 +4426,19 @@ SUBROUTINE Problem_SolverNonlinearMonitorPETSC(SNES,iterationNumber,residualNorm
       IF(ASSOCIATED(solver)) THEN
         CALL Problem_SolverNonlinearMonitor(solver,iterationNumber,residualNorm,err,error,*999)
       ELSE
-        CALL FLAG_ERROR("Solver is not associated.",err,error,*999)
+        CALL FlagError("Solver is not associated.",err,error,*999)
       ENDIF
     ELSE
-      CALL FLAG_ERROR("Solver nonlinear solver is not associated.",err,error,*999)
+      CALL FlagError("Solver nonlinear solver is not associated.",err,error,*999)
     ENDIF
   ELSE
-    CALL FLAG_ERROR("Solver context is not associated.",err,error,*999)
+    CALL FlagError("Solver context is not associated.",err,error,*999)
   ENDIF
   
   RETURN
 
-999 CALL WRITE_ERROR(err,error,*998)
-998 CALL FLAG_WARNING("Error evaluating nonlinear residual.",err,error,*997)
+999 CALL WriteError(err,error,*998)
+998 CALL FlagWarning("Error evaluating nonlinear residual.",err,error,*997)
 997 RETURN    
 
 END SUBROUTINE Problem_SolverNonlinearMonitorPETSC

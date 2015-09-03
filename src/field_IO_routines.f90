@@ -145,6 +145,15 @@ MODULE FIELD_IO_ROUTINES
       INTEGER(C_INT) :: FieldExport_Group
     END FUNCTION FieldExport_Group
 
+    FUNCTION FieldExport_Region( handle, regionName ) &
+      & BIND(C,NAME="FieldExport_Region")
+      USE TYPES
+      USE ISO_C_BINDING
+      INTEGER(C_INT), VALUE :: handle
+      CHARACTER(C_CHAR), INTENT(IN) :: regionName(*)
+      INTEGER(C_INT) :: FieldExport_Region
+    END FUNCTION FieldExport_Region
+
     FUNCTION FieldExport_MeshDimensions( handle, meshDimensions , basisType) &
       & BIND(C,NAME="FieldExport_MeshDimensions")
       USE TYPES
@@ -3380,9 +3389,11 @@ CONTAINS
     ENDIF
 
     IF(ASSOCIATED(ELEMENTAL_INFO_SET%FIELDS%REGION)) THEN
+      ERR = FieldExport_Region( sessionHandle, CHAR(ELEMENTAL_INFO_SET%FIELDS%REGION%LABEL)//C_NULL_CHAR )
       ERR = FieldExport_Group( sessionHandle, CHAR(ELEMENTAL_INFO_SET%FIELDS%REGION%LABEL)//C_NULL_CHAR )
     ELSE
       IF(ASSOCIATED(ELEMENTAL_INFO_SET%FIELDS%INTERFACE)) THEN
+        ERR = FieldExport_Region( sessionHandle, CHAR(ELEMENTAL_INFO_SET%FIELDS%INTERFACE%LABEL)//C_NULL_CHAR )
         ERR = FieldExport_Group( sessionHandle, CHAR(ELEMENTAL_INFO_SET%FIELDS%INTERFACE%LABEL)//C_NULL_CHAR )
       ELSE
         CALL FLAG_ERROR("Fields region or interface is not associated.",ERR,ERROR,*999)
@@ -5175,9 +5186,11 @@ CONTAINS
     ENDIF
 
     IF(ASSOCIATED(NODAL_INFO_SET%FIELDS%REGION)) THEN
+      ERR = FieldExport_Region( sessionHandle, CHAR(NODAL_INFO_SET%FIELDS%REGION%LABEL)//C_NULL_CHAR )
       ERR = FieldExport_Group( sessionHandle, CHAR(NODAL_INFO_SET%FIELDS%REGION%LABEL)//C_NULL_CHAR )
     ELSE
       IF(ASSOCIATED(NODAL_INFO_SET%FIELDS%INTERFACE)) THEN
+       ERR = FieldExport_Region( sessionHandle, CHAR(NODAL_INFO_SET%FIELDS%INTERFACE%LABEL)//C_NULL_CHAR )
        ERR = FieldExport_Group( sessionHandle, CHAR(NODAL_INFO_SET%FIELDS%INTERFACE%LABEL)//C_NULL_CHAR )
      ELSE
         CALL FLAG_ERROR("Fields region or interface is not associated.",ERR,ERROR,*999)

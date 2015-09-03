@@ -227,10 +227,15 @@ static SessionListEntry *FieldExport_GetSession( const int handle )
 */
 static int FieldExport_File_Group( FileSession *const session, const char *const label )
 {
+  //return FieldExport_FPrintf( session, " Region: /%s\n", label );
   return FieldExport_FPrintf( session, " Group name: %s\n", label );
-    //return FieldExport_FPrintf( session, " Region: /%s\n", label );
 }
 
+static int FieldExport_File_Region( FileSession *const session, const char *const label )
+{
+  return FieldExport_FPrintf( session, " Region: /%s\n", label );
+  //return FieldExport_FPrintf( session, " Group name: %s\n", label );
+}
 
 static int FieldExport_File_MeshDimensions( FileSession *const session, const int dimensions, const int basisType )
 {
@@ -1069,6 +1074,25 @@ int FieldExport_Group( const int handle, const char *const label )
     else if( session->type == EXPORT_TYPE_FILE )
     {
         return FieldExport_File_Group( &session->fileSession, label );
+    }
+    else 
+    {
+        return FIELD_EXPORT_ERROR_CLOSED_HANDLE;
+    }
+}
+
+
+int FieldExport_Region( const int handle, const char *const label )
+{
+    SessionListEntry *session = FieldExport_GetSession( handle );
+    
+    if( session == NULL )
+    {
+        return FIELD_EXPORT_ERROR_BAD_HANDLE;
+    }
+    else if( session->type == EXPORT_TYPE_FILE )
+    {
+        return FieldExport_File_Region( &session->fileSession, label );
     }
     else 
     {

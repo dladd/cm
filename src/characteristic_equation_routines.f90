@@ -383,7 +383,7 @@ CONTAINS
                 CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(equationsSet%DEPENDENT%DEPENDENT_FIELD, &
                  & FIELD_U1_VARIABLE_TYPE,dependentFieldNumberOfComponents,err,error,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(equationsSet%DEPENDENT%DEPENDENT_FIELD, &
-                 & FIELD_U2_VARIABLE_TYPE,dependentFieldNumberOfComponents,err,error,*999)
+                 & FIELD_U2_VARIABLE_TYPE,3,err,error,*999)
                 CALL FIELD_COMPONENT_MESH_COMPONENT_GET(equationsSet%GEOMETRY%GEOMETRIC_FIELD,FIELD_U_VARIABLE_TYPE, & 
                   & 1,geometricMeshComponent,err,error,*999)
                 !Default to the geometric interpolation setup for U,dUdN
@@ -399,6 +399,8 @@ CONTAINS
                   CALL FIELD_COMPONENT_MESH_COMPONENT_SET(equationsSet%DEPENDENT%DEPENDENT_FIELD, & 
                     & FIELD_U2_VARIABLE_TYPE,componentIdx,geometricMeshComponent,err,error,*999)
                 END DO
+                  CALL FIELD_COMPONENT_MESH_COMPONENT_SET(equationsSet%DEPENDENT%DEPENDENT_FIELD, & 
+                    & FIELD_U2_VARIABLE_TYPE,3,geometricMeshComponent,err,error,*999)
                 SELECT CASE(equationsSet%SOLUTION_METHOD)
                 !Specify nodal solution method
                 CASE(EQUATIONS_SET_NODAL_SOLUTION_METHOD)
@@ -415,6 +417,8 @@ CONTAINS
                     CALL FIELD_COMPONENT_INTERPOLATION_SET_AND_LOCK(equationsSet%DEPENDENT%DEPENDENT_FIELD, &
                       & FIELD_U2_VARIABLE_TYPE,componentIdx,FIELD_NODE_BASED_INTERPOLATION,err,error,*999)
                   ENDDO
+                  CALL FIELD_COMPONENT_INTERPOLATION_SET_AND_LOCK(equationsSet%DEPENDENT%DEPENDENT_FIELD, &
+                    & FIELD_U2_VARIABLE_TYPE,3,FIELD_NODE_BASED_INTERPOLATION,err,error,*999)
                   CALL FIELD_SCALING_TYPE_GET(equationsSet%GEOMETRY%GEOMETRIC_FIELD,geometricScalingType, &
                     & err,error,*999)
                   CALL FIELD_SCALING_TYPE_SET(equationsSet%DEPENDENT%DEPENDENT_FIELD,geometricScalingType, &

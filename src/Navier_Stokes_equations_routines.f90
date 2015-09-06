@@ -12847,8 +12847,7 @@ CONTAINS
     INTEGER(INTG) :: solver3dNavierStokesNumber,userNodeNumber,localDof,globalDof
     REAL(DP) :: normalWave(2)
     REAL(DP) :: flow1D,stress1D,flow1DPrevious,stress1DPrevious,flow3D,stress3D,flowError,stressError,couplingTolerance
-    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,MPI_LOGICAL
-    LOGICAL, ALLOCATABLE :: globalConverged(:)
+    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,globalConverged,converged
 
     CALL ENTERS("NavierStokes_Couple3D1D",ERR,ERROR,*999)
 
@@ -13002,26 +13001,29 @@ CONTAINS
     ! C h e c k   G l o b a l   C o u p l i n g   C o n v e r g e n c e
     ! ------------------------------------------------------------------
     ! Check whether all boundaries on the local process have converged
+    localConverged=.FALSE.
+    globalConverged=.FALSE.
+    converged=.FALSE.
     IF(numberOfBoundaries == 0 .OR. ALL(boundaryConverged(1:numberOfBoundaries))) THEN
       localConverged = .TRUE.
-    ELSE
-      localConverged = .FALSE.
     END IF
     ! Need to check that boundaries have converged globally (on all domains) if this is a MPI problem
     numberOfComputationalNodes=COMPUTATIONAL_ENVIRONMENT%NUMBER_COMPUTATIONAL_NODES
     IF(numberOfComputationalNodes>1) THEN !use mpi
       !allocate array for mpi communication
-      ALLOCATE(globalConverged(numberOfComputationalNodes),STAT=ERR) 
+
       IF(ERR/=0) CALL FLAG_ERROR("Could not allocate global convergence check array.",ERR,ERROR,*999)
-      CALL MPI_ALLGATHER(localConverged,1,MPI_LOGICAL,globalConverged,1,MPI_LOGICAL, &
-       & COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
-      CALL MPI_ERROR_CHECK("MPI_ALLGATHER",MPI_IERROR,ERR,ERROR,*999)
-      IF(ALL(globalConverged)) THEN
+      !CALL MPI_ALLGATHER(localConverged,1,MPI_LOGICAL,globalConverged,1,MPI_LOGICAL, &
+      ! & COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+      !CALL MPI_ERROR_CHECK("MPI_ALLGATHER",MPI_IERROR,ERR,ERROR,*999)
+      converged = localConverged
+      CALL MPI_ALLREDUCE(localConverged,globalConverged,1,MPI_LOGICAL,MPI_LAND,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+      CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
+      IF(globalConverged) THEN
         CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"3D/1D coupling converged; # iterations: ", &
           & iteration,err,error,*999)
         iterativeLoop%CONTINUE_LOOP=.FALSE.
       END IF
-      DEALLOCATE(globalConverged)
     ELSE
       IF(localConverged) THEN
         CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"3D/1D coupling converged; # iterations: ", &

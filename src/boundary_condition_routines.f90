@@ -58,6 +58,7 @@ MODULE BOUNDARY_CONDITIONS_ROUTINES
   USE INPUT_OUTPUT
   USE ISO_VARYING_STRING
   USE KINDS
+  USE MESH_ROUTINES
   USE MPI
   USE NODE_ROUTINES
   USE STRINGS
@@ -223,10 +224,10 @@ CONTAINS
                     !\todo This operation is a little expensive as we are doing an unnecessary sum across all the ranks in order to combin
                     !\todo the data from each rank into all ranks. We will see how this goes for now.
                     CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%DOF_TYPES, &
-                      & SEND_COUNT,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+                      & SEND_COUNT,MPI_INTEGER,MPI_MAX,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
                     CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
                     CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%CONDITION_TYPES, &
-                      & SEND_COUNT,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+                      & SEND_COUNT,MPI_INTEGER,MPI_MAX,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
                     CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
                   ELSE
                     LOCAL_ERROR="Field variable domain mapping is not associated for variable type "// &
@@ -234,13 +235,20 @@ CONTAINS
                     CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                   ENDIF
 
-                  ! Update the total number of boundary condition types by summing across all nodes
-                  CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%DOF_COUNTS, &
-                    & MAX_BOUNDARY_CONDITION_NUMBER,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
-                  CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
-                  CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%NUMBER_OF_DIRICHLET_CONDITIONS, &
-                    & 1,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
-                  CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
+                  IF(ASSOCIATED(BOUNDARY_CONDITIONS%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR%DEPENDENT% &
+                    & DEPENDENT_FIELD%DECOMPOSITION) .AND. BOUNDARY_CONDITIONS%SOLVER_EQUATIONS%SOLVER_MAPPING% &
+                    & EQUATIONS_SETS(1)%PTR%DEPENDENT%DEPENDENT_FIELD%DECOMPOSITION% &
+                    & DECOMPOSITION_TYPE==DECOMPOSITION_EVERY_TYPE) THEN
+                    ! Decomposition "every" type: don't do gather all processes- each one should contain all nodes/elements
+                  ELSE
+                    ! Update the total number of boundary condition types by summing across all nodes
+                    CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%DOF_COUNTS, &
+                      & MAX_BOUNDARY_CONDITION_NUMBER,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+                    CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
+                    CALL MPI_ALLREDUCE(MPI_IN_PLACE,BOUNDARY_CONDITION_VARIABLE%NUMBER_OF_DIRICHLET_CONDITIONS, &
+                      & 1,MPI_INTEGER,MPI_SUM,COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+                    CALL MPI_ERROR_CHECK("MPI_ALLREDUCE",MPI_IERROR,ERR,ERROR,*999)
+                  END IF
 
                   ! Check that the boundary conditions set are appropriate for equations sets
                   CALL BoundaryConditions_CheckEquations(BOUNDARY_CONDITION_VARIABLE,ERR,ERROR,*999)

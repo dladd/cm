@@ -74,6 +74,7 @@ MODULE MESH_ROUTINES
   INTEGER(INTG), PARAMETER :: DECOMPOSITION_ALL_TYPE=1 !<The decomposition contains all elements. \see MESH_ROUTINES_DecompositionTypes,MESH_ROUTINES
   INTEGER(INTG), PARAMETER :: DECOMPOSITION_CALCULATED_TYPE=2 !<The element decomposition is calculated by graph partitioning. \see MESH_ROUTINES_DecompositionTypes,MESH_ROUTINES
   INTEGER(INTG), PARAMETER :: DECOMPOSITION_USER_DEFINED_TYPE=3 !<The user will set the element decomposition. \see MESH_ROUTINES_DecompositionTypes,MESH_ROUTINES
+  INTEGER(INTG), PARAMETER :: DECOMPOSITION_EVERY_TYPE=4 !<The element decomposition is distributed to all processes. \see MESH_ROUTINES_DecompositionTypes,MESH_ROUTINES
   !>@}
   
   !Module types
@@ -99,7 +100,7 @@ MODULE MESH_ROUTINES
     MODULE PROCEDURE MESH_USER_NUMBER_FIND_REGION
   END INTERFACE !MESH_USER_NUMBER_FIND
 
-  PUBLIC DECOMPOSITION_ALL_TYPE,DECOMPOSITION_CALCULATED_TYPE,DECOMPOSITION_USER_DEFINED_TYPE
+  PUBLIC DECOMPOSITION_ALL_TYPE,DECOMPOSITION_CALCULATED_TYPE,DECOMPOSITION_USER_DEFINED_TYPE,DECOMPOSITION_EVERY_TYPE
 
   PUBLIC DECOMPOSITIONS_INITIALISE,DECOMPOSITIONS_FINALISE
 
@@ -585,11 +586,10 @@ CONTAINS
           IF(ERR/=0) GOTO 999
           
           SELECT CASE(DECOMPOSITION%DECOMPOSITION_TYPE)
-          CASE(DECOMPOSITION_ALL_TYPE)
+          CASE(DECOMPOSITION_ALL_TYPE,DECOMPOSITION_USER_DEFINED_TYPE)
             !Do nothing. Decomposition checked below.
-           CASE(DECOMPOSITION_CALCULATED_TYPE)
+          CASE(DECOMPOSITION_CALCULATED_TYPE)
             !Calculate the general decomposition
-
             IF(DECOMPOSITION%NUMBER_OF_DOMAINS==1) THEN
               DECOMPOSITION%ELEMENT_DOMAIN=0
             ELSE
@@ -698,9 +698,11 @@ CONTAINS
               DEALLOCATE(TPWGTS)
 
             ENDIF
-            
-          CASE(DECOMPOSITION_USER_DEFINED_TYPE)
-            !Do nothing. Decomposition checked below.          
+
+          CASE(DECOMPOSITION_EVERY_TYPE)
+            ! Allocate all elements to all processes
+            DECOMPOSITION%ELEMENT_DOMAIN = my_computational_node_number
+
           CASE DEFAULT
             CALL FLAG_ERROR("Invalid domain decomposition type.",ERR,ERROR,*999)            
           END SELECT
@@ -721,13 +723,24 @@ CONTAINS
               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             ENDIF
           ENDDO !elem_index
-          DO no_computational_node=0,number_computational_nodes-1
-            IF(ELEMENT_COUNT(no_computational_node)==0) THEN
+
+          IF(DECOMPOSITION%DECOMPOSITION_TYPE==DECOMPOSITION_EVERY_TYPE) THEN
+            ! "Every" decomposition type: all elements should be on all processes- ensure there are elements on this process
+            IF(ELEMENT_COUNT(my_computational_node_number)==0) THEN
               LOCAL_ERROR="Invalid decomposition. There are no elements in computational node "// &
                 & TRIM(NUMBER_TO_VSTRING(no_computational_node,"*",ERR,ERROR))//"."
               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
             ENDIF
-          ENDDO !no_computational_node
+          ELSE
+            ! Other types: elements should be split across processes
+            DO no_computational_node=0,number_computational_nodes-1
+              IF(ELEMENT_COUNT(no_computational_node)==0) THEN
+                LOCAL_ERROR="Invalid decomposition. There are no elements in computational node "// &
+                  & TRIM(NUMBER_TO_VSTRING(no_computational_node,"*",ERR,ERROR))//"."
+                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+              ENDIF
+            ENDDO !no_computational_node
+          END IF
           DEALLOCATE(ELEMENT_COUNT)
           
         ELSE
@@ -1060,7 +1073,7 @@ CONTAINS
           ELSE
             CALL FLAG_ERROR("Can only have one domain for all decomposition type.",ERR,ERROR,*999)
           ENDIF
-        CASE(DECOMPOSITION_CALCULATED_TYPE,DECOMPOSITION_USER_DEFINED_TYPE)
+        CASE(DECOMPOSITION_CALCULATED_TYPE,DECOMPOSITION_USER_DEFINED_TYPE,DECOMPOSITION_EVERY_TYPE)
           IF(NUMBER_OF_DOMAINS>=1) THEN
             !wolfye???<=?
             IF(NUMBER_OF_DOMAINS<=DECOMPOSITION%MESH%NUMBER_OF_ELEMENTS) THEN
@@ -1085,9 +1098,9 @@ CONTAINS
           ELSE
              CALL FLAG_ERROR("Number of domains must be >= 1.",ERR,ERROR,*999)
            ENDIF
-         CASE DEFAULT
+        CASE DEFAULT
           LOCAL_ERROR="Decomposition type "//TRIM(NUMBER_TO_VSTRING(DECOMPOSITION%DECOMPOSITION_TYPE,"*",ERR,ERROR))// &
-            & " is not valid."
+           & " is not valid."
           CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
         END SELECT
       ENDIF
@@ -3650,6 +3663,8 @@ CONTAINS
           DECOMPOSITION%DECOMPOSITION_TYPE=DECOMPOSITION_CALCULATED_TYPE
         CASE(DECOMPOSITION_USER_DEFINED_TYPE)
           DECOMPOSITION%DECOMPOSITION_TYPE=DECOMPOSITION_USER_DEFINED_TYPE
+        CASE(DECOMPOSITION_EVERY_TYPE)
+          DECOMPOSITION%DECOMPOSITION_TYPE=DECOMPOSITION_EVERY_TYPE
         CASE DEFAULT
           LOCAL_ERROR="Decomposition type "//TRIM(NUMBER_TO_VSTRING(TYPE,"*",ERR,ERROR))//" is not valid."
           CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
@@ -4671,13 +4686,23 @@ CONTAINS
                       CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
                     ENDIF
                   ENDDO !node_idx
-                  DO no_computational_node=0,number_computational_nodes-1
-                    IF(NODE_COUNT(no_computational_node)==0) THEN
+                  IF(DECOMPOSITION%DECOMPOSITION_TYPE==DECOMPOSITION_EVERY_TYPE) THEN
+                    ! "Every" decomposition type: all nodes should be on all processes- ensure there are nodes on this process
+                    IF(NODE_COUNT(my_computational_node_number)==0) THEN
                       LOCAL_ERROR="Invalid decomposition. There are no nodes in computational node "// &
                         & TRIM(NUMBER_TO_VSTRING(no_computational_node,"*",ERR,ERROR))//"."
                       CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-                    ENDIF
-                  ENDDO !no_computational_node
+                    END IF
+                  ELSE
+                    ! Other types: nodes should be split across processes
+                    DO no_computational_node=0,number_computational_nodes-1
+                      IF(NODE_COUNT(no_computational_node)==0) THEN
+                        LOCAL_ERROR="Invalid decomposition. There are no nodes in computational node "// &
+                          & TRIM(NUMBER_TO_VSTRING(no_computational_node,"*",ERR,ERROR))//"."
+                        CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                      END IF
+                    END DO !no_computational_node
+                  END IF
                   DEALLOCATE(NODE_COUNT)
           
                   DEALLOCATE(GHOST_NODES_LIST)

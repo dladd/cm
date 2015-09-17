@@ -1426,8 +1426,9 @@ CONTAINS
                           XI(1)=0.0_DP - extrapolationDistance/(elementLengths(versionIdx))
                         ENDIF
                         IF (XI(1) > 1.0_DP .OR. XI(1) < 0.0_DP) THEN
-                          CALL FLAG_WARNING("1D extrapolation location outside of element xi space. Reduce time increment", &
-                           & ERR,ERROR,*999)
+                          localError="1D extrapolation at "//TRIM(NUMBER_TO_VSTRING(XI(1),"*",ERR,ERROR))// &
+                            & " in element xi-space. Decrease timestep or increase element lengths."
+                          CALL FLAG_ERROR(localError,ERR,ERROR,*999)
                           overExtrapolated = .TRUE.
                         ENDIF
 

@@ -1371,12 +1371,19 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSControlLoop_MaximumIterationsSetObj
   END INTERFACE !CMISSControlLoop_MaximumIterationsSet
 
-  !>Sets/changes the convergence tolerance for a while control loop. \todo need a get method
+  !>Sets/changes the absolute convergence tolerance for a while control loop. \todo need a get method
   INTERFACE CMISSControlLoop_AbsoluteToleranceSet
     MODULE PROCEDURE CMISSControlLoop_AbsoluteToleranceSetNumber0
     MODULE PROCEDURE CMISSControlLoop_AbsoluteToleranceSetNumber1
     MODULE PROCEDURE CMISSControlLoop_AbsoluteToleranceSetObj
   END INTERFACE !CMISSControlLoop_AbsoluteToleranceSet
+
+  !>Sets/changes the relative convergence tolerance for a while control loop. \todo need a get method
+  INTERFACE CMISSControlLoop_RelativeToleranceSet
+    MODULE PROCEDURE CMISSControlLoop_RelativeToleranceSetNumber0
+    MODULE PROCEDURE CMISSControlLoop_RelativeToleranceSetNumber1
+    MODULE PROCEDURE CMISSControlLoop_RelativeToleranceSetObj
+  END INTERFACE !CMISSControlLoop_RelativeToleranceSet
 
   !>Returns the number of sub loops for a control loop.
   INTERFACE CMISSControlLoop_NumberOfSubLoopsGet
@@ -1457,7 +1464,7 @@ MODULE OPENCMISS
 
   PUBLIC CMISSControlLoop_MaximumIterationsSet
 
-  PUBLIC CMISSControlLoop_AbsoluteToleranceSet
+  PUBLIC CMISSControlLoop_AbsoluteToleranceSet,CMISSControlLoop_RelativeToleranceSet
 
   PUBLIC CMISSControlLoop_NumberOfSubLoopsGet,CMISSControlLoop_NumberOfSubLoopsSet
 
@@ -16515,11 +16522,11 @@ CONTAINS
   !================================================================================================================================
   !
 
-  !>Sets/changes the maximum iterations for a while control loop identified by user numbers.
+  !>Sets/changes the absolute tolerance for a while control loop identified by user numbers.
   SUBROUTINE CMISSControlLoop_AbsoluteToleranceSetNumber0(problemUserNumber,controlLoopIdentifier,absoluteTolerance,err)
 
     !Argument variables
-    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the maximum iterations for.
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the absolute tolerance for.
     INTEGER(INTG), INTENT(IN) :: controlLoopIdentifier !<The control loop identifier.
     REAL(DP), INTENT(IN) :: absoluteTolerance !<The absolute tolerance value for a control loop.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
@@ -16554,11 +16561,11 @@ CONTAINS
   !================================================================================================================================
   !
 
-  !>Sets/changes the maximum iterations for a while control loop identified by user numbers.
+  !>Sets/changes the absolute tolerance for a while control loop identified by user numbers.
   SUBROUTINE CMISSControlLoop_AbsoluteToleranceSetNumber1(problemUserNumber,controlLoopIdentifiers,absoluteTolerance,err)
 
     !Argument variables
-    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the maximum iterations for.
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the absolute tolerance for.
     INTEGER(INTG), INTENT(IN) :: controlLoopIdentifiers(:) !<The control loop identifiers.
     REAL(DP), INTENT(IN) :: absoluteTolerance !<The absolute tolerance value for a control loop.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
@@ -16593,11 +16600,11 @@ CONTAINS
   !================================================================================================================================
   !
 
-  !>Sets/changes the maximum iterations for a while control loop identified by an object.
+  !>Sets/changes the absolute tolerance for a while control loop identified by an object.
   SUBROUTINE CMISSControlLoop_AbsoluteToleranceSetObj(controlLoop,absoluteTolerance,err)
 
     !Argument variables
-    TYPE(CMISSControlLoopType), INTENT(INOUT) :: controlLoop !<The control loop to set the maximum iterations for.
+    TYPE(CMISSControlLoopType), INTENT(INOUT) :: controlLoop !<The control loop to set the absolute tolerance for.
     REAL(DP), INTENT(IN) :: absoluteTolerance !<The absolute tolerance value for a control loop.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code.
     !Local variables
@@ -16614,6 +16621,110 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSControlLoop_AbsoluteToleranceSetObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the relative tolerance for a while control loop identified by user numbers.
+  SUBROUTINE CMISSControlLoop_RelativeToleranceSetNumber0(problemUserNumber,controlLoopIdentifier,relativeTolerance,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the relative tolerance for.
+    INTEGER(INTG), INTENT(IN) :: controlLoopIdentifier !<The control loop identifier.
+    REAL(DP), INTENT(IN) :: relativeTolerance !<The relative tolerance value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(CONTROL_LOOP_TYPE), POINTER :: CONTROL_LOOP
+    TYPE(PROBLEM_TYPE), POINTER :: PROBLEM
+    TYPE(VARYING_STRING) :: LOCAL_ERROR
+
+    CALL ENTERS("CMISSControlLoop_RelativeToleranceSetNumber0",err,error,*999)
+
+    NULLIFY(CONTROL_LOOP)
+    NULLIFY(PROBLEM)
+    CALL PROBLEM_USER_NUMBER_FIND(problemUserNumber,PROBLEM,err,error,*999)
+    IF(ASSOCIATED(PROBLEM)) THEN
+      CALL PROBLEM_CONTROL_LOOP_GET(PROBLEM,controlLoopIdentifier,CONTROL_LOOP,err,error,*999)
+      CALL ControlLoop_RelativeToleranceSet(CONTROL_LOOP,relativeTolerance,err,error,*999)
+    ELSE
+      LOCAL_ERROR="A problem with an user number of "//TRIM(NUMBER_TO_VSTRING(problemUserNumber,"*",err,error))//" does not exist."
+      CALL FLAG_ERROR(LOCAL_ERROR,err,error,*999)
+    END IF
+
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetNumber0")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_RelativeToleranceSetNumber0",err,error)
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetNumber0")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_RelativeToleranceSetNumber0
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the relative tolerance for a while control loop identified by user numbers.
+  SUBROUTINE CMISSControlLoop_RelativeToleranceSetNumber1(problemUserNumber,controlLoopIdentifiers,relativeTolerance,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the relative tolerance for.
+    INTEGER(INTG), INTENT(IN) :: controlLoopIdentifiers(:) !<The control loop identifiers.
+    REAL(DP), INTENT(IN) :: relativeTolerance !<The relative tolerance value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(CONTROL_LOOP_TYPE), POINTER :: CONTROL_LOOP
+    TYPE(PROBLEM_TYPE), POINTER :: PROBLEM
+    TYPE(VARYING_STRING) :: LOCAL_ERROR
+
+    CALL ENTERS("CMISSControlLoop_RelativeToleranceSetNumber1",err,error,*999)
+
+    NULLIFY(CONTROL_LOOP)
+    NULLIFY(PROBLEM)
+    CALL PROBLEM_USER_NUMBER_FIND(problemUserNumber,PROBLEM,err,error,*999)
+    IF(ASSOCIATED(PROBLEM)) THEN
+      CALL PROBLEM_CONTROL_LOOP_GET(PROBLEM,controlLoopIdentifiers,CONTROL_LOOP,err,error,*999)
+      CALL ControlLoop_RelativeToleranceSet(CONTROL_LOOP,relativeTolerance,err,error,*999)
+    ELSE
+      LOCAL_ERROR="A problem with an user number of "//TRIM(NUMBER_TO_VSTRING(problemUserNumber,"*",err,error))//" does not exist."
+      CALL FLAG_ERROR(LOCAL_ERROR,err,error,*999)
+    END IF
+
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetNumber1")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_RelativeToleranceSetNumber1",err,error)
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetNumber1")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_RelativeToleranceSetNumber1
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the relative tolerance for a while control loop identified by an object.
+  SUBROUTINE CMISSControlLoop_RelativeToleranceSetObj(controlLoop,relativeTolerance,err)
+
+    !Argument variables
+    TYPE(CMISSControlLoopType), INTENT(INOUT) :: controlLoop !<The control loop to set the relative tolerance for.
+    REAL(DP), INTENT(IN) :: relativeTolerance !<The relative tolerance value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+
+    CALL ENTERS("CMISSControlLoop_RelativeToleranceSetObj",err,error,*999)
+
+    CALL ControlLoop_RelativeToleranceSet(controlLoop%CONTROL_LOOP,relativeTolerance,err,error,*999)
+
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetObj")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_RelativeToleranceSetObj",err,error)
+    CALL EXITS("CMISSControlLoop_RelativeToleranceSetObj")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_RelativeToleranceSetObj
 
   !
   !================================================================================================================================

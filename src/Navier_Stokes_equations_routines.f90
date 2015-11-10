@@ -1115,7 +1115,7 @@ CONTAINS
                 CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U1_VARIABLE_TYPE, &
                   & DEPENDENT_FIELD_NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
                 CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U2_VARIABLE_TYPE, &
-                  & DEPENDENT_FIELD_NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
+                  & 3,ERR,ERROR,*999)
                 SELECT CASE(EQUATIONS_SET%SOLUTION_METHOD)
                 CASE(EQUATIONS_SET_FEM_SOLUTION_METHOD)
                   CALL FIELD_COMPONENT_INTERPOLATION_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U_VARIABLE_TYPE,1, &
@@ -1405,6 +1405,7 @@ CONTAINS
             END SELECT
           CASE(EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
              & EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+             & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE, &
              & EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
             !Set start action
@@ -1978,9 +1979,9 @@ CONTAINS
                     & FIELD_U_VARIABLE_TYPE,MATERIAL_FIELD_NUMBER_OF_COMPONENTS1,ERR,ERROR,*999)
                   CALL FIELD_COMPONENT_MESH_COMPONENT_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD, & 
                     & FIELD_U_VARIABLE_TYPE,1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
-                  CALL FIELD_COMPONENT_MESH_COMPONENT_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
-                    & 1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
-                  DO componentIdx=1,MATERIAL_FIELD_NUMBER_OF_COMPONENTS2
+                  DO componentIdx=1,MATERIAL_FIELD_NUMBER_OF_COMPONENTS1
+                    CALL FIELD_COMPONENT_MESH_COMPONENT_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+                      & componentIdx,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
                     CALL FIELD_COMPONENT_INTERPOLATION_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
                       & componentIdx,FIELD_CONSTANT_INTERPOLATION,ERR,ERROR,*999)
                   END DO
@@ -1995,9 +1996,9 @@ CONTAINS
                     & FIELD_V_VARIABLE_TYPE,MATERIAL_FIELD_NUMBER_OF_COMPONENTS2,ERR,ERROR,*999)
                   CALL FIELD_COMPONENT_MESH_COMPONENT_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD, & 
                     & FIELD_U_VARIABLE_TYPE,1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
-                  CALL FIELD_COMPONENT_MESH_COMPONENT_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
-                    & 1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
                   DO componentIdx=1,MATERIAL_FIELD_NUMBER_OF_COMPONENTS2
+                    CALL FIELD_COMPONENT_MESH_COMPONENT_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
+                      & componentIdx,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
                     CALL FIELD_COMPONENT_INTERPOLATION_SET(EQUATIONS_MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
                       & componentIdx,FIELD_GAUSS_POINT_BASED_INTERPOLATION,ERR,ERROR,*999)
                   END DO
@@ -2582,13 +2583,11 @@ CONTAINS
               ELSE
                 CALL FLAG_ERROR("Solver equations is not associated.",ERR,ERROR,*999)
               END IF
-            CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
               !Update transient boundary conditions and any analytic values
               CALL NAVIER_STOKES_PRE_SOLVE_UPDATE_BOUNDARY_CONDITIONS(SOLVER,ERR,ERROR,*999)
-            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
-              !Update transient boundary conditions
-              CALL NAVIER_STOKES_PRE_SOLVE_UPDATE_BOUNDARY_CONDITIONS(SOLVER,ERR,ERROR,*999)
-
             CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
               SELECT CASE(SOLVER%SOLVE_TYPE)
               ! --- D y n a m i c    S o l v e r s --- 
@@ -3008,6 +3007,10 @@ CONTAINS
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
         PROBLEM%SUBTYPE=PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE
+      CASE(PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
+        PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
+        PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
+        PROBLEM%SUBTYPE=PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE
       CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
@@ -3174,7 +3177,8 @@ CONTAINS
         !Transient 2D/3D cases
         CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
            & PROBLEM_PGM_NAVIER_STOKES_SUBTYPE, &
-           & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
+           & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+           & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
           SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
             CASE(PROBLEM_SETUP_INITIAL_TYPE)
               SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
@@ -3223,8 +3227,8 @@ CONTAINS
                   CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
                   CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
                   CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-                  !setup CellML evaluator
-                  IF(PROBLEM%SUBTYPE==PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE) THEN
+                  !setup CellML evaluator for constitutive law
+                  IF(PROBLEM%SUBTYPE==PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE) THEN
                     !Create the CellML evaluator solver
                     CALL SOLVER_NEWTON_CELLML_EVALUATOR_CREATE(SOLVER,cellmlSolver,ERR,ERROR,*999)
                     !Link the CellML evaluator solver to the solver
@@ -4890,26 +4894,9 @@ CONTAINS
             IF(ASSOCIATED(NONLINEAR_MATRICES)) UPDATE_NONLINEAR_RESIDUAL=NONLINEAR_MATRICES%UPDATE_RESIDUAL
             CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,EQUATIONS%INTERPOLATION% &
              & MATERIALS_INTERP_PARAMETERS(FIELD_V_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-          CASE(EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
-            DYNAMIC_MATRICES=>EQUATIONS_MATRICES%DYNAMIC_MATRICES
-            STIFFNESS_MATRIX=>DYNAMIC_MATRICES%MATRICES(1)%PTR
-            DAMPING_MATRIX=>DYNAMIC_MATRICES%MATRICES(2)%PTR
-            NONLINEAR_MATRICES=>EQUATIONS_MATRICES%NONLINEAR_MATRICES
-            DYNAMIC_MAPPING=>EQUATIONS_MAPPING%DYNAMIC_MAPPING
-            NONLINEAR_MAPPING=>EQUATIONS_MAPPING%NONLINEAR_MAPPING
-            FIELD_VARIABLE=>NONLINEAR_MAPPING%RESIDUAL_VARIABLES(1)%PTR
-            FIELD_VAR_TYPE=FIELD_VARIABLE%VARIABLE_TYPE
-            STIFFNESS_MATRIX%ELEMENT_MATRIX%MATRIX=0.0_DP
-            DAMPING_MATRIX%ELEMENT_MATRIX%MATRIX=0.0_DP
-            NONLINEAR_MATRICES%ELEMENT_RESIDUAL%VECTOR=0.0_DP
-            IF(ASSOCIATED(STIFFNESS_MATRIX)) UPDATE_STIFFNESS_MATRIX=STIFFNESS_MATRIX%UPDATE_MATRIX
-            IF(ASSOCIATED(DAMPING_MATRIX)) UPDATE_DAMPING_MATRIX=DAMPING_MATRIX%UPDATE_MATRIX
-            IF(ASSOCIATED(RHS_VECTOR)) UPDATE_RHS_VECTOR=RHS_VECTOR%UPDATE_VECTOR
-            IF(ASSOCIATED(NONLINEAR_MATRICES)) UPDATE_NONLINEAR_RESIDUAL=NONLINEAR_MATRICES%UPDATE_RESIDUAL
-          CASE(EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
+          CASE(EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+            &  EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
             &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
-            DECOMPOSITION => DEPENDENT_FIELD%DECOMPOSITION
-            MESH_COMPONENT_NUMBER = DECOMPOSITION%MESH_COMPONENT_NUMBER
             DYNAMIC_MATRICES=>EQUATIONS_MATRICES%DYNAMIC_MATRICES
             STIFFNESS_MATRIX=>DYNAMIC_MATRICES%MATRICES(1)%PTR
             DAMPING_MATRIX=>DYNAMIC_MATRICES%MATRICES(2)%PTR
@@ -4955,8 +4942,13 @@ CONTAINS
             & DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
           CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,EQUATIONS%INTERPOLATION% &
             & GEOMETRIC_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-          CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
-            & MU_PARAM,err,error,*999)
+          IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+            CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
+              & muScale,err,error,*999)
+          ELSE
+            CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
+              & MU_PARAM,err,error,*999)
+          END IF
           CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,2, &
             & RHO_PARAM,err,error,*999)
           !Loop over Gauss points
@@ -4982,8 +4974,6 @@ CONTAINS
 
             ! Get the constitutive law (non-Newtonian) viscosity based on shear rate
             IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-              ! Note the constant from the U_VARIABLE is a scale factor
-              muScale = MU_PARAM
               ! Get the gauss point based value returned from the CellML solver
               CALL Field_ParameterSetGetLocalGaussPoint(MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                 & ng,ELEMENT_NUMBER,1,MU_PARAM,ERR,ERROR,*999)
@@ -5343,6 +5333,7 @@ CONTAINS
             !------------------------------------------------------------------
             IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE.OR. &
               & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE.OR. &
+              & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE.OR. &
               & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE) THEN
               CALL NavierStokes_ResidualBasedStabilisation(EQUATIONS_SET,ELEMENT_NUMBER,ng, &
                & MU_PARAM,RHO_PARAM,.FALSE.,ERR,ERROR,*999)
@@ -5788,21 +5779,9 @@ CONTAINS
                 IF(ASSOCIATED(JACOBIAN_MATRIX)) UPDATE_JACOBIAN_MATRIX=JACOBIAN_MATRIX%UPDATE_JACOBIAN
                 CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,EQUATIONS%INTERPOLATION% &
                  & MATERIALS_INTERP_PARAMETERS(FIELD_V_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-              CASE(EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
-                NONLINEAR_MAPPING=>EQUATIONS_MAPPING%NONLINEAR_MAPPING
-                NONLINEAR_MATRICES=>EQUATIONS_MATRICES%NONLINEAR_MATRICES
-                JACOBIAN_MATRIX=>NONLINEAR_MATRICES%JACOBIANS(1)%PTR
-                JACOBIAN_MATRIX%ELEMENT_JACOBIAN%MATRIX=0.0_DP
-                DYNAMIC_MATRICES=>EQUATIONS_MATRICES%DYNAMIC_MATRICES
-                DYNAMIC_MAPPING=>EQUATIONS_MAPPING%DYNAMIC_MAPPING
-                FIELD_VARIABLE=>NONLINEAR_MAPPING%RESIDUAL_VARIABLES(1)%PTR
-                FIELD_VAR_TYPE=FIELD_VARIABLE%VARIABLE_TYPE
-                LINEAR_MAPPING=>EQUATIONS_MAPPING%LINEAR_MAPPING
-                IF(ASSOCIATED(JACOBIAN_MATRIX)) UPDATE_JACOBIAN_MATRIX=JACOBIAN_MATRIX%UPDATE_JACOBIAN
-              CASE(EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
+              CASE(EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+                &  EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
                 &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
-                DECOMPOSITION => DEPENDENT_FIELD%DECOMPOSITION
-                MESH_COMPONENT_NUMBER = DECOMPOSITION%MESH_COMPONENT_NUMBER
                 NONLINEAR_MAPPING=>EQUATIONS_MAPPING%NONLINEAR_MAPPING
                 NONLINEAR_MATRICES=>EQUATIONS_MATRICES%NONLINEAR_MATRICES
                 JACOBIAN_MATRIX=>NONLINEAR_MATRICES%JACOBIANS(1)%PTR
@@ -5838,8 +5817,13 @@ CONTAINS
               & DEPENDENT_INTERP_PARAMETERS(FIELD_VAR_TYPE)%PTR,ERR,ERROR,*999)
             CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ELEMENT_NUMBER,EQUATIONS%INTERPOLATION% &
               & GEOMETRIC_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-            CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
-              & MU_PARAM,err,error,*999)
+            IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+              CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
+                & muScale,err,error,*999)
+            ELSE
+              CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1, &
+                & MU_PARAM,err,error,*999)
+            END IF
             CALL FIELD_PARAMETER_SET_GET_CONSTANT(MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,2, &
               & RHO_PARAM,err,error,*999)
             !Loop over all Gauss points 
@@ -5865,8 +5849,6 @@ CONTAINS
 
               ! Get the constitutive law (non-Newtonian) viscosity based on shear rate
               IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-                ! Note the constant from the U_VARIABLE is a scale factor
-                muScale = MU_PARAM
                 ! Get the gauss point based value returned from the CellML solver
                 CALL Field_ParameterSetGetLocalGaussPoint(MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                   & ng,ELEMENT_NUMBER,1,MU_PARAM,ERR,ERROR,*999)
@@ -5986,6 +5968,7 @@ CONTAINS
                 ! Stabilisation terms
                 IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE.OR. &
                   & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE.OR. &
+                  & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE.OR. &
                   & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE) THEN
                   CALL NavierStokes_ResidualBasedStabilisation(EQUATIONS_SET,ELEMENT_NUMBER,ng,MU_PARAM,RHO_PARAM,.TRUE., &
                    & ERR,ERROR,*999)
@@ -6436,16 +6419,17 @@ CONTAINS
                & timestep,outputIteration,ERR,ERROR,*999)
               ! CALL NavierStokes_CalculateBoundaryFlux(SOLVER,ERR,ERROR,*999)
               ! CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(SOLVER,err,error,*999)
-            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
               ! CALL NavierStokes_CalculateBoundaryFlux(SOLVER,ERR,ERROR,*999)
               ! CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(SOLVER,err,error,*999)
               DO equationsSetNumber=1,SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
                 ! If this is a coupled constitutive (non-Newtonian) viscosity problem, update shear rate values
                 !  to be passed to the CellML solver at beginning of next timestep
                 IF(SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(equationsSetNumber)%PTR% &
-                 &  EQUATIONS%EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-                 CALL NavierStokes_ShearRateCalculate(SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING% &
-                  & EQUATIONS_SETS(equationsSetNumber)%PTR%EQUATIONS%EQUATIONS_SET,err,error,*999)
+                  &  EQUATIONS%EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+                  CALL NavierStokes_ShearRateCalculate(SOLVER%SOLVER_EQUATIONS%SOLVER_MAPPING% &
+                    & EQUATIONS_SETS(equationsSetNumber)%PTR%EQUATIONS%EQUATIONS_SET,err,error,*999)
                 END IF
               END DO
             CASE(PROBLEM_ALE_NAVIER_STOKES_SUBTYPE)
@@ -6584,7 +6568,8 @@ CONTAINS
               ! do nothing ???
             CASE(PROBLEM_STATIC_NAVIER_STOKES_SUBTYPE, &
                & PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
-               & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
+               & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
               SOLVER_EQUATIONS=>SOLVER%SOLVER_EQUATIONS
               IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
                 SOLVER_MAPPING=>SOLVER_EQUATIONS%SOLVER_MAPPING
@@ -8354,7 +8339,9 @@ CONTAINS
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
-            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE,PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT1D_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_NAVIER_STOKES_SUBTYPE, &
              & PROBLEM_TRANSIENT1D_ADV_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_ADV_NAVIER_STOKES_SUBTYPE)
@@ -8779,7 +8766,9 @@ CONTAINS
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
-            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE,PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT1D_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_NAVIER_STOKES_SUBTYPE, &
              & PROBLEM_TRANSIENT1D_ADV_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_ADV_NAVIER_STOKES_SUBTYPE)
@@ -9022,6 +9011,7 @@ CONTAINS
              & PROBLEM_ALE_NAVIER_STOKES_SUBTYPE, &
              & PROBLEM_PGM_NAVIER_STOKES_SUBTYPE, &
              & PROBLEM_QUASISTATIC_NAVIER_STOKES_SUBTYPE, &
+             & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE, &
              & PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
 
             CALL CONTROL_LOOP_CURRENT_TIMES_GET(CONTROL_LOOP,CURRENT_TIME,TIME_INCREMENT,ERR,ERROR,*999)
@@ -9202,7 +9192,7 @@ CONTAINS
                       END IF
                       DEPENDENT_REGION=>EQUATIONS_SET%REGION
                       FILE=OUTPUT_FILE
-                      FILENAME="./output/"//"MainTime_"//TRIM(NUMBER_TO_VSTRING(CURRENT_LOOP_ITERATION,"*",ERR,ERROR))
+                      FILENAME="./"//"MainTime_"//TRIM(NUMBER_TO_VSTRING(CURRENT_LOOP_ITERATION,"*",ERR,ERROR))
                       METHOD="FORTRAN"
                       EXPORT_FIELD=.TRUE.
                       IF(EXPORT_FIELD) THEN          
@@ -9460,8 +9450,9 @@ CONTAINS
                                     boundaryConditionsCheckVariable=boundaryConditionsVariable% &
                                      & CONDITION_TYPES(globalDof)
                                     ! update dependent field values if fixed inlet or pressure BC
-                                    IF(boundaryConditionsCheckVariable==BOUNDARY_CONDITION_FIXED_INLET) THEN
-                                      ! Set velocity/flowrate values
+                                    IF(boundaryConditionsCheckVariable==BOUNDARY_CONDITION_FIXED_INLET .OR. &
+                                     & boundaryConditionsCheckVariable==BOUNDARY_CONDITION_FIXED_PRESSURE) THEN
+                                      ! Set DOF values
                                       CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
                                        & FIELD_VALUES_SET_TYPE,localDof,VALUE,err,error,*999)
                                     ELSE IF(boundaryConditionsCheckVariable==BOUNDARY_CONDITION_PRESSURE) THEN
@@ -11445,8 +11436,13 @@ CONTAINS
               KMatrix = 0.0_DP
               CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,elementNumber,equations%INTERPOLATION% &
                 & GEOMETRIC_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,err,error,*999)
-              CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
-                & FIELD_VALUES_SET_TYPE,1,mu,err,error,*999)
+              IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+                CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+                  & FIELD_VALUES_SET_TYPE,1,muScale,err,error,*999)
+              ELSE
+                CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+                  & FIELD_VALUES_SET_TYPE,1,mu,err,error,*999)
+              END IF
               CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
                 & FIELD_VALUES_SET_TYPE,2,rho,err,error,*999)
 
@@ -11455,8 +11451,6 @@ CONTAINS
 
                 ! Get the constitutive law (non-Newtonian) viscosity based on shear rate
                 IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-                  ! Note the constant from the U_VARIABLE is a scale factor
-                  muScale = mu
                   ! Get the gauss point based value returned from the CellML solver
                   CALL Field_ParameterSetGetLocalGaussPoint(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
                     & FIELD_VALUES_SET_TYPE,gaussNumber,elementNumber,1,mu,err,error,*999)
@@ -11674,9 +11668,9 @@ CONTAINS
     REAL(DP) :: pressure,viscosity,density,jacobianGaussWeights,beta,normalFlow,muScale
     REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm(3)
     REAL(DP) :: boundaryInPlaneVector1(3),boundaryInPlaneVector2(3),boundaryNormal(3),tempVector(3)
-    REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correct1D(2,3)
+    REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3)
     REAL(DP) :: boundaryValue,normalDifference,normalTolerance,SUM1,SUM2,boundaryPressure
-    REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),cauchy(3,3)
+    REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     LOGICAL :: integratedBoundary
 
@@ -11751,6 +11745,7 @@ CONTAINS
       boundaryType=NINT(boundaryValue)
       integratedBoundary = .FALSE.
       IF(boundaryType == BOUNDARY_CONDITION_PRESSURE) integratedBoundary = .TRUE.
+      IF(boundaryType == BOUNDARY_CONDITION_FIXED_PRESSURE) integratedBoundary = .TRUE.
       IF(boundaryType == BOUNDARY_CONDITION_COUPLING_STRESS) integratedBoundary = .TRUE.
 
       !Get the mesh decomposition and basis
@@ -11781,8 +11776,13 @@ CONTAINS
           & geometricParameters,ERR,ERROR,*999)
         fieldVariable=>equations%EQUATIONS_MAPPING%NONLINEAR_MAPPING%RESIDUAL_VARIABLES(1)%PTR
         !Get the viscosity and density
-        CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
-         & FIELD_VALUES_SET_TYPE,1,viscosity,err,error,*999)
+        IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+          CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+            & FIELD_VALUES_SET_TYPE,1,muScale,err,error,*999)
+        ELSE
+          CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+            & FIELD_VALUES_SET_TYPE,1,viscosity,err,error,*999)
+        END IF
         CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
          & 2,density,err,error,*999)
 
@@ -11868,8 +11868,6 @@ CONTAINS
 
             ! Get the constitutive law (non-Newtonian) viscosity based on shear rate if needed
             IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-              ! Note the constant from the U_VARIABLE is a scale factor
-              muScale = viscosity
               ! Get the gauss point based value returned from the CellML solver
               CALL Field_ParameterSetGetLocalGaussPoint(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
                 & FIELD_VALUES_SET_TYPE,gaussIdx,elementNumber,1,viscosity,err,error,*999)
@@ -11897,16 +11895,6 @@ CONTAINS
               ! Not the correct boundary face - go to next face
               EXIT
             END IF
-
-            ! If this is a coupled stress boundary condition, we apply traction ((-pI + mu*(gradU+gradU_T)).normal).normal
-            ! Interpolate applied boundary pressure value
-            boundaryPressure=0.0_DP
-            !Get the pressure value interpolation parameters
-            CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
-             & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-            CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
-             & dependentInterpolatedPoint,ERR,ERROR,*999)
-            boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
 
             ! Keep this here for now: not using for Pressure BC but may want for traction BC
             ! Interpolate current solution velocity/pressure field values
@@ -11939,11 +11927,14 @@ CONTAINS
             !   normalViscousTerm(i) = viscosity*(SUM1 + SUM2)
             ! END DO
             cauchy = 0.0_DP
+            cauchy2 = 0.0_DP
+            cauchy3 = 0.0_DP            
             traction = 0.0_DP
             ! Calculate Cauchy stress tensor
             DO i = 1,3
               DO j = 1,3
                 cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+                cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
                 IF(i==j) THEN
                   cauchy(i,j) = cauchy(i,j) - pressure
                 END IF
@@ -11951,11 +11942,58 @@ CONTAINS
             END DO
             !DEBUG
             traction = MATMUL(cauchy,unitNormal)
-            correction1D_1 = MATMUL(cauchy,boundaryInPlaneVector1)
-            correction1D_2 = MATMUL(cauchy,boundaryInPlaneVector2)
 
-            !correction1D_1 = MATMUL(cauchy,correct1D(1,:))
-            !correction1D_2 = MATMUL(cauchy,correct1D(2,:))
+            SELECT CASE(boundaryType)
+            CASE(BOUNDARY_CONDITION_COUPLING_STRESS)
+              !DEBUG
+              correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
+              correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
+              correction1D_3 = MATMUL(cauchy2,unitNormal)
+              stabilisationTerm = 0.0_DP
+              boundaryPressure=0.0_DP
+              !Get the pressure value interpolation parameters
+              CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
+               & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
+              CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+               & dependentInterpolatedPoint,ERR,ERROR,*999)
+              boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
+!              traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
+              traction = -boundaryPressure + beta*(correction1D_1+correction1D_2+correction1D_3)
+              ! ! Calculate Cauchy stress tensor
+              ! cauchy = 0.0_DP
+              ! cauchy2 = 0.0_DP
+              ! cauchy3 = 0.0_DP            
+              ! DO i = 1,3
+              !   DO j = 1,3
+              !     cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+              !     cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+              !     cauchy3(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+              !     IF(i==j) THEN
+              !       cauchy(i,j) = cauchy(i,j) - boundaryPressure
+              !       cauchy3(i,j) = cauchy(i,j) - pressure
+              !     END IF
+              !   END DO
+              ! END DO
+              !traction = MATMUL(cauchy,unitNormal) + beta*(correction1D_1+correction1D_2)
+              !traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
+            CASE(BOUNDARY_CONDITION_FIXED_PRESSURE)
+              ! Do nothing (traction=traction)
+            CASE(BOUNDARY_CONDITION_PRESSURE)
+              ! If this is a coupled stress boundary condition, we apply traction ((-pI + mu*(gradU+gradU_T)).normal).normal
+              ! Interpolate applied boundary pressure value
+              boundaryPressure=0.0_DP
+              !Get the pressure value interpolation parameters
+              CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
+               & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
+              CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+               & dependentInterpolatedPoint,ERR,ERROR,*999)
+              boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
+              traction = -boundaryPressure*unitNormal
+            CASE DEFAULT
+              LOCAL_ERROR="Boundary condition type "//TRIM(NUMBER_TO_VSTRING(boundaryType,"*",ERR,ERROR))// &
+                & " is not appropriate for as an integrated face type for 3D Navier-Stokes."
+              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+            END SELECT
 
             !Jacobian and Gauss weighting term
             jacobianGaussWeights=pointMetrics%JACOBIAN*faceQuadratureScheme%GAUSS_WEIGHTS(gaussIdx)
@@ -11973,22 +12011,24 @@ CONTAINS
                   elementDof=elementBaseDofIdx+elementParameterIdx
                   
                   rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
-                    &  ( stabilisationTerm(componentIdx) - boundaryPressure*normalProjection(componentIdx))* &
-!                    &  (-boundaryPressure*normalProjection(componentIdx))* &
-!                    &  (-boundaryPressure)* &
+                    &  (traction(componentIdx)*normalProjection(componentIdx) + stabilisationTerm(componentIdx))* &
                     &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
                     &  jacobianGaussWeights
+!                    &  ( stabilisationTerm(componentIdx) - boundaryPressure*normalProjection(componentIdx))* &
+!                    &  (-boundaryPressure*normalProjection(componentIdx))* &
+!                    &  (-boundaryPressure)* &
 
-                  !DEBUG
-                  IF(boundaryType == BOUNDARY_CONDITION_COUPLING_STRESS) THEN
-!                    rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
-                    nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)+ &
-!                      &  beta*(correction1D_1(componentIdx) + correction1D_2(componentIdx))* &
-!                      &  beta*boundaryPressure*(boundaryInPlaneVector1(componentIdx) + boundaryInPlaneVector2(componentIdx))* &
-                      &  beta*(correction1D_1(componentIdx) + correction1D_2(componentIdx))* &
-                      &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
-                      &  jacobianGaussWeights
-                  END IF
+! !                   !DEBUG
+!                   IF(boundaryType == BOUNDARY_CONDITION_COUPLING_STRESS) THEN
+! !                    rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
+!                     nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)+ &
+!                       &  beta*(correction1D_1(componentIdx) + correction1D_2(componentIdx))*normalProjection(componentIdx)* &
+!                       &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
+!                       &  jacobianGaussWeights
+! !                      &  beta*(correction1D_1(componentIdx) + correction1D_2(componentIdx))* &
+! !                      &  beta*boundaryPressure*(boundaryInPlaneVector1(componentIdx) + boundaryInPlaneVector2(componentIdx))* &
+! !                      &  beta*(correction1D_1(componentIdx) + correction1D_2(componentIdx))* &
+!                   END IF
 
                 END DO !nodeDerivativeIdx
               END DO !faceNodeIdx
@@ -12149,6 +12189,13 @@ CONTAINS
       ! Get constant max Courant (CFL) number (default 1.0)
       CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSetField3D,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
        & 2,toleranceCourant,err,error,*999)
+      IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
+        CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+          & FIELD_VALUES_SET_TYPE,1,muScale,err,error,*999)
+      ELSE
+        CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
+          & FIELD_VALUES_SET_TYPE,1,mu,err,error,*999)
+      END IF
 
       ! Loop over elements to locate boundary elements
       maxCourant = 0.0_DP
@@ -12162,25 +12209,28 @@ CONTAINS
         dependentBasis=>decomposition3D%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS% &
           & ELEMENTS(elementIdx)%BASIS
         decompElement=>DECOMPOSITION3D%TOPOLOGY%ELEMENTS%ELEMENTS(elementIdx)
-        ! Calculate element metrics (courant #, cell Reynolds number)
-        CALL NavierStokes_CalculateElementMetrics(equationsSet,elementIdx,err,error,*999)            
 
-        ! C F L  c o n d i t i o n   c h e c k
-        ! ------------------------------------
-        ! Get element metrics
-        CALL Field_ParameterSetGetLocalElement(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-         & elementIdx,3,courant,err,error,*999)
-        IF(courant < -ZERO_TOLERANCE) THEN
-          CALL FLAG_WARNING("Negative Courant (CFL) number.",ERR,ERROR,*999)
-        END IF
-        IF(courant > maxCourant) maxCourant = courant
-        ! Check if element CFL number below specified tolerance
-        IF(courant > toleranceCourant) THEN
-          LOCAL_ERROR="Element "//TRIM(NUMBER_TO_VSTRING(decompElement%user_number, &
-            & "*",ERR,ERROR))//" has violated the CFL condition "//TRIM(NUMBER_TO_VSTRING(courant, &
-            & "*",ERR,ERROR))//" <= "//TRIM(NUMBER_TO_VSTRING(toleranceCourant,"*",ERR,ERROR))// &
-            & ". Decrease timestep or increase CFL tolerance for the 3D Navier-Stokes problem."
-          CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+        ! Note: if CFL tolerance = 0, we'll skip this step, which speeds things up a bit
+        IF (toleranceCourant > ZERO_TOLERANCE) THEN
+          ! C F L  c o n d i t i o n   c h e c k
+          ! ------------------------------------
+          ! Calculate element metrics (courant #, cell Reynolds number)
+          CALL NavierStokes_CalculateElementMetrics(equationsSet,elementIdx,err,error,*999)            
+          ! Get element metrics
+          CALL Field_ParameterSetGetLocalElement(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+           & elementIdx,3,courant,err,error,*999)
+          IF(courant < -ZERO_TOLERANCE) THEN
+            CALL FLAG_WARNING("Negative Courant (CFL) number.",ERR,ERROR,*999)
+          END IF
+          IF(courant > maxCourant) maxCourant = courant
+          ! Check if element CFL number below specified tolerance
+          IF(courant > toleranceCourant) THEN
+            LOCAL_ERROR="Element "//TRIM(NUMBER_TO_VSTRING(decompElement%user_number, &
+              & "*",ERR,ERROR))//" has violated the CFL condition "//TRIM(NUMBER_TO_VSTRING(courant, &
+              & "*",ERR,ERROR))//" <= "//TRIM(NUMBER_TO_VSTRING(toleranceCourant,"*",ERR,ERROR))// &
+              & ". Decrease timestep or increase CFL tolerance for the 3D Navier-Stokes problem."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END IF
         END IF
 
         ! B o u n d a r y   n o r m a l   a n d   I D
@@ -12278,12 +12328,8 @@ CONTAINS
               IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
                & boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) THEN
                 couple3DTo1D = .TRUE.
-                CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
-                & FIELD_VALUES_SET_TYPE,1,mu,err,error,*999)
                 ! Get the constitutive law (non-Newtonian) viscosity based on shear rate if needed
                 IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
-                  ! Note the constant from the U_VARIABLE is a scale factor
-                  muScale = mu
                   ! Get the gauss point based value returned from the CellML solver
                   CALL Field_ParameterSetGetLocalGaussPoint(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_V_VARIABLE_TYPE, &
                     & FIELD_VALUES_SET_TYPE,gaussIdx,elementIdx,1,mu,err,error,*999)
@@ -12396,6 +12442,9 @@ CONTAINS
               & globalBoundaryMeanNormalStress(boundaryID),err,error,*999)
             CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID,"  mean pressure:  ", &
               & globalBoundaryMeanPressure(boundaryID),err,error,*999)
+            IF (toleranceCourant > ZERO_TOLERANCE) THEN
+              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"Max Courant (CFL) number: ",maxCourant,err,error,*999)
+            END IF
           END IF
         ELSE
           LOCAL_ERROR="Zero or negative area boundary detected on boundary "// &
@@ -12527,8 +12576,8 @@ CONTAINS
               & FIELD_VALUES_SET_TYPE,2,rho,err,error,*999)
             ! Convert 1D flow and pressure to coupling stress and flow
             p3D = p1D! + rho/2.0_DP*ABS(q1D/a1D)**2.0_DP
-            CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"1D boundary ",boundaryID,"  pressure:  ", &
-              & p1D,err,error,*999)
+            ! CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"1D boundary ",boundaryID,"  pressure:  ", &
+            !   & p1D,err,error,*999)
             couplingStress = -p1D
             couplingFlow = -normal*q1D
             ! Update the coupling flow and stress values from the 3D equations set to the coupled 1D field
@@ -12597,8 +12646,8 @@ CONTAINS
               IF(couple1DTo3D) THEN
                 IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS) THEN
                   ! Copy coupling stress from 1D to pressure values type on 3D
-                  CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField3D,FIELD_U_VARIABLE_TYPE, &
-                    & FIELD_VALUES_SET_TYPE,1,1,nodeNumber,4,p3D,err,error,*999)
+                  !CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField3D,FIELD_U_VARIABLE_TYPE, &
+                  !  & FIELD_VALUES_SET_TYPE,1,1,nodeNumber,4,p3D,err,error,*999)
                   CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField3D,FIELD_U_VARIABLE_TYPE, &
                     & FIELD_PRESSURE_VALUES_SET_TYPE,1,1,nodeNumber,4,p3D,err,error,*999)
                 ELSE IF(boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) THEN
@@ -13153,10 +13202,10 @@ CONTAINS
     INTEGER(INTG) :: solver1dNavierStokesNumber,solverNumber
     INTEGER(INTG) :: branchNumber,numberOfBranches,numberOfComputationalNodes,numberOfVersions
     INTEGER(INTG) :: MPI_IERROR,timestep,iteration,outputIteration
-    REAL(DP) :: couplingTolerance,l2ErrorW(30),wPrevious(2,4),wNavierStokes(2,4),wCharacteristic(2,4),wError(2,4)
-    REAL(DP) :: l2ErrorQ(100),qCharacteristic(4),qNavierStokes(4),wNext(2,4)
+    REAL(DP) :: couplingTolerance,l2ErrorW(30),wPrevious(2,7),wNavierStokes(2,7),wCharacteristic(2,7),wError(2,7)
+    REAL(DP) :: l2ErrorQ(100),qCharacteristic(7),qNavierStokes(7),wNext(2,7)
     REAL(DP) :: totalErrorWPrevious,startTime,stopTime,currentTime,timeIncrement
-    REAL(DP) :: l2ErrorA(100),aCharacteristic(4),aNavierStokes(4),totalErrorW,totalErrorQ,totalErrorA
+    REAL(DP) :: l2ErrorA(100),aCharacteristic(7),aNavierStokes(7),totalErrorW,totalErrorQ,totalErrorA
     REAL(DP) :: totalErrorMass,totalErrorMomentum
     REAL(DP) :: rho,alpha,normalWave,A0_PARAM,E_PARAM,H_PARAM,beta,aNew,penaltyCoeff
     LOGICAL :: branchConverged(100),localConverged,MPI_LOGICAL,boundaryNode,fluxDiverged
@@ -13418,7 +13467,7 @@ CONTAINS
     INTEGER(INTG) :: meshComponentNumber,numberOfDimensions,i,j,userElementNumber
     INTEGER(INTG) :: localElementNumber,startElement,stopElement
     REAL(DP) :: gaussWeight,shearRate,secondInvariant,strainRate
-    REAL(DP) :: dUdXi(3,3),dXidX(3,3),dUdX(3,3),dUdXTrans(3,3),rateOfDeformation(3,3),velocityGauss(3)
+    REAL(DP) :: dUdXi(3,3),dXidX(3,3),dUdX(3,3),dUdXTrans(3,3),D(3,3),velocityGauss(3)
     REAL(DP) :: shearRateDefault
     LOGICAL :: ghostElement,elementExists,defaultUpdate
 
@@ -13526,23 +13575,24 @@ CONTAINS
             DO i=1,3
               DO j=1,3
                 strainRate = strainRate + (dUdX(i,j)*dUdXTrans(i,j))
-                rateOfDeformation(i,j) = (dUdX(i,j) + dUdXTrans(i,j))/2.0_DP
+                D(i,j) = (dUdX(i,j) + dUdXTrans(i,j))/2.0_DP
               END DO
-            END DO            
-            ! sum of principal minors
-            secondInvariant= - rateOfDeformation(1,2)**2.0_DP - &
-               & rateOfDeformation(2,3)**2.0_DP - rateOfDeformation(1,3)**2.0_DP
+            END DO  
+            secondInvariant= D(1,1)*D(2,2) + D(1,1)*D(3,3) + D(3,3)*D(2,2) - D(1,2)*D(2,1) - D(1,3)*D(3,1) - D(3,2)*D(2,3)
 
-            IF(secondInvariant > -ZERO_TOLERANCE) THEN
+            IF(secondInvariant > ZERO_TOLERANCE) THEN
               CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE, &
                & "WARNING: positive second invariant of rate of deformation tensor: ",secondInvariant,err,error,*999)
               CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Element number: ",userElementNumber,err,error,*999)
               CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"   Gauss point number: ",gaussIdx,err,error,*999)
-              defaultUpdate=.TRUE.
-              EXIT
-            ELSE
-              shearRate=SQRT(-4.0_DP*secondInvariant)
+            !   defaultUpdate=.TRUE.
+            !   EXIT
+            ! ELSE
+            !   shearRate=2.0_DP*SQRT(ABS(secondInvariant))
             END IF
+            shearRate=2.0_DP*SQRT(ABS(secondInvariant))
+            !DEBUG
+            !shearRate = 10000.0_DP
             CALL Field_ParameterSetUpdateLocalGaussPoint(materialsField,FIELD_V_VARIABLE_TYPE, &
               & FIELD_VALUES_SET_TYPE,gaussIdx,localElementNumber,2,shearRate,ERR,ERROR,*999)
 
@@ -13668,7 +13718,8 @@ CONTAINS
         &  PROBLEM_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
         &  PROBLEM_ALE_NAVIER_STOKES_SUBTYPE)
         ! Do nothing
-      CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
+      CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+         & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
         SELECT CASE(controlLoop%LOOP_TYPE)
         CASE(PROBLEM_CONTROL_TIME_LOOP_TYPE)
           navierStokesSolver=>controlLoop%SOLVERS%SOLVERS(1)%PTR
@@ -13913,7 +13964,7 @@ CONTAINS
     TYPE(SOLVER_MAPPING_TYPE), POINTER :: solverMapping
     TYPE(VARYING_STRING) :: localError
     REAL(DP) :: rho,A0,H0,E,beta,pExternal,lengthScale,timeScale,massScale
-    REAL(DP) :: pCellml,qCellml,ABoundary,QBoundary,W1,W2,ACellML,normalWave(2,4)
+    REAL(DP) :: pCellml,qCellml,ABoundary,QBoundary,W1,W2,ACellML,normalWave(2,7)
     REAL(DP) :: Q3D,A3D,p3D
     REAL(DP), POINTER :: Impedance(:),Flow(:)
     INTEGER(INTG) :: nodeIdx,versionIdx,derivativeIdx,componentIdx,numberOfVersions,numberOfLocalNodes
@@ -14067,7 +14118,7 @@ CONTAINS
                 CALL Field_ParameterSetGetLocalNode(dependentField,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                   & versionIdx,derivativeIdx,nodeIdx,2,pCellml,err,error,*999)                    
                 ! Convert pCellML from SI base units specified in CellML file to scaled units (e.g., kg/(m.s^2) --> g/(mm.ms^2))
-                pCellml = pCellml*massScale/(lengthScale*(timeScale**2.0_DP))
+                ! pCellml = pCellml*massScale/(lengthScale*(timeScale**2.0_DP))
                 ! Convert pCellML --> A0D 
                 ACellML=((pCellml-pExternal)/beta+SQRT(A0))**2.0_DP
                 !  O u t l e t
@@ -14203,6 +14254,7 @@ CONTAINS
     !!!-- O t h e r   3 D    E q u a t i o n s   S e t s --!!! 
     CASE(EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
        & EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+       & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE, &
        & EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE)
       ! Do nothing
 

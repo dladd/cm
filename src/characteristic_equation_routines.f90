@@ -838,7 +838,7 @@ CONTAINS
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: fieldVariable
     TYPE(VARYING_STRING) :: localError
     REAL(DP), POINTER :: dependentParameters(:),independentParameters(:),materialsParameters(:),materialsParameters1(:)
-    REAL(DP) :: Q_BIF(4),A_BIF(4),A0_PARAM(4),E_PARAM(4),H0_PARAM(4),Beta(4),W(2,4),normalWave(2,4),SUM,rho
+    REAL(DP) :: Q_BIF(7),A_BIF(7),A0_PARAM(7),E_PARAM(7),H0_PARAM(7),Beta(7),W(2,7),normalWave(2,7),SUM,rho
     INTEGER(INTG) :: derivativeIdx,versionIdx,versionIdx2,componentIdx,rowIdx,columnIdx,componentIdx2,numberOfVersions,local_ny
     LOGICAL :: updateStiffnessMatrix,updateNonlinearResidual,boundaryNode
 
@@ -1054,7 +1054,7 @@ CONTAINS
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: fieldVariable
     TYPE(VARYING_STRING) :: localError
     REAL(DP), POINTER :: dependentParameters(:),independentParameters(:),materialsParameters(:),materialsParameters1(:)
-    REAL(DP) :: Q_BIF(4),A_BIF(4),A0_PARAM(4),E_PARAM(4),H0_PARAM(4),Beta(4),W(2,4),normalWave(2,4),rho
+    REAL(DP) :: Q_BIF(7),A_BIF(7),A0_PARAM(7),E_PARAM(7),H0_PARAM(7),Beta(7),W(2,7),normalWave(2,7),rho
     INTEGER(INTG) :: numberOfVersions,local_ny,startColumn2
     INTEGER(INTG) :: derivativeIdx,versionIdx,rowIdx,columnIdx,columnIdx2,startRow,endRow,componentIdx
     LOGICAL :: updateJacobianMatrix,boundaryNode
@@ -1287,11 +1287,11 @@ CONTAINS
     TYPE(SOLVER_EQUATIONS_TYPE), POINTER :: solverEquations
     TYPE(SOLVER_MAPPING_TYPE), POINTER :: solverMapping
     TYPE(VARYING_STRING) :: localError
-    REAL(DP) :: W(2,4),Q_EX(4),A_EX(4),XI(1),A0_PARAM(4),H0_PARAM(4),E_PARAM(4),Beta(4),normalWave(2,4),elementLengths(4)
-    REAL(DP) :: A0_EX(4),H0_EX(4),E_EX(4),Beta_EX(4),f(4),l,friction
-    REAL(DP) :: QPrevious,APrevious,rho,lambda(4)
-    REAL(DP) :: elementLength,extrapolationDistance,W1,W2,WPrevious(2,4)
-    INTEGER(INTG) :: nodeIdx,versionIdx,derivativeIdx,elementIdx,elementNumber,versionElementNumber(4),lineNumber
+    REAL(DP) :: W(2,7),Q_EX(7),A_EX(7),XI(1),A0_PARAM(7),H0_PARAM(7),E_PARAM(7),Beta(7),normalWave(2,7),elementLengths(7)
+    REAL(DP) :: A0_EX(7),H0_EX(7),E_EX(7),Beta_EX(7),f(7),l,friction
+    REAL(DP) :: QPrevious,APrevious,rho,lambda(7)
+    REAL(DP) :: elementLength,extrapolationDistance,W1,W2,WPrevious(2,7)
+    INTEGER(INTG) :: nodeIdx,versionIdx,derivativeIdx,elementIdx,elementNumber,versionElementNumber(7),lineNumber
     INTEGER(INTG) :: elementNodeIdx,elementNodeNumber,elementNodeVersion,numberOfVersions,componentIdx,numberOfLocalNodes
     LOGICAL :: overExtrapolated
 
@@ -1412,7 +1412,9 @@ CONTAINS
                          & (APrevious**0.25)*SQRT(Beta(versionIdx)/(2.0_DP*rho))
                         ! Check that lambda(1) > 0, lambda(2) < 0
                         IF (lambda(versionIdx)*normalWave(componentIdx,versionIdx) < 0.0_DP) THEN
-                          CALL FLAG_ERROR("Subcritical 1D system violated.",ERR,ERROR,*999)
+                          localError="Subcritical 1D system violated at node "//TRIM(NUMBER_TO_VSTRING(nodeIdx,"*",ERR,ERROR))//"."
+                          CALL FLAG_ERROR(localError,ERR,ERROR,*999)
+                          !CALL FLAG_ERROR("Subcritical 1D system violated.",ERR,ERROR,*999)
                         ENDIF
 
                         ! Calculate extrapolation distance and xi location
@@ -1536,7 +1538,7 @@ CONTAINS
     TYPE(DOMAIN_NODES_TYPE), POINTER :: domainNodes
     TYPE(VARYING_STRING) :: localError
     INTEGER(INTG) :: nodeNumber,nodeIdx,derivativeIdx,versionIdx,componentIdx,numberOfVersions,dofNumber
-    REAL(DP) :: qCurrent(4), aCurrent(4),W(2,4)
+    REAL(DP) :: qCurrent(7), aCurrent(7),W(2,7)
     REAL(DP) :: normalWave,A0_PARAM,E_PARAM,H0_PARAM,Beta
     LOGICAL :: boundaryNode
 

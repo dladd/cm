@@ -399,7 +399,7 @@ CONTAINS
                 & EQUATIONS_SET_FEM_SOLUTION_METHOD,ERR,ERROR,*999)
               EQUATIONS_SET%SOLUTION_METHOD=EQUATIONS_SET_FEM_SOLUTION_METHOD
               EQUATIONS_SET_FIELD_NUMBER_OF_VARIABLES = 3
-              nodeBasedComponents = 1  ! boundary flux
+              nodeBasedComponents = 2  ! boundary flow, pressure
               elementBasedComponents = 11  ! 4 element metrics, 3 boundary normal components, boundaryID, boundaryType, C1, coupledNodeNumber
               constantBasedComponents = 4  ! maxCFL, boundaryStabilisationBeta, timeIncrement, stabilisationType
               EQUATIONS_EQUATIONS_SET_FIELD=>EQUATIONS_SET%EQUATIONS_SET_FIELD
@@ -416,7 +416,7 @@ CONTAINS
                  CALL FIELD_VARIABLE_TYPES_SET_AND_LOCK(EQUATIONS_SET_FIELD_FIELD,&
                    & [FIELD_U_VARIABLE_TYPE,FIELD_V_VARIABLE_TYPE,FIELD_U1_VARIABLE_TYPE],ERR,ERROR,*999)
                  CALL FIELD_VARIABLE_LABEL_SET(EQUATIONS_SET_FIELD_FIELD,FIELD_U_VARIABLE_TYPE, &
-                   & "BoundaryFlow",ERR,ERROR,*999)
+                   & "BoundaryFlowPressure",ERR,ERROR,*999)
                  CALL FIELD_VARIABLE_LABEL_SET(EQUATIONS_SET_FIELD_FIELD,FIELD_V_VARIABLE_TYPE, &
                    & "ElementMetrics",ERR,ERROR,*999)
                  CALL FIELD_VARIABLE_LABEL_SET(EQUATIONS_SET_FIELD_FIELD,FIELD_U1_VARIABLE_TYPE, &
@@ -442,12 +442,14 @@ CONTAINS
               IF(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_AUTO_CREATED) THEN
                 CALL FIELD_CREATE_FINISH(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD,ERR,ERROR,*999)
                 !Default the Element Metrics parameter values 0.0
-                nodeBasedComponents = 1  ! boundary flux
+                nodeBasedComponents = 2  ! boundary flow,pressure
                 elementBasedComponents = 11  ! 4 element metrics, 3 boundary normal components, boundaryID, boundaryType, C1, coupledNodeNumber
                 constantBasedComponents = 4  ! maxCFL, boundaryStabilisationBeta, timeIncrement, stabilisationType
                 ! Init boundary flux to 0
-                CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
-                  & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1,0.0_DP,ERR,ERROR,*999)
+                DO componentIdx=1,nodeBasedComponents
+                  CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                    & FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,componentIdx,0.0_DP,ERR,ERROR,*999)
+                END DO
                 ! Init Element Metrics to 0 (except C1)
                 DO componentIdx=1,elementBasedComponents-1
                   CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
@@ -538,7 +540,7 @@ CONTAINS
              &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
             CASE(EQUATIONS_SET_SETUP_START_ACTION)
-              nodeBasedComponents = 1  ! boundary flux
+              nodeBasedComponents = 2  ! boundary flow, pressure
               elementBasedComponents = 11  ! 4 element metrics, 3 boundary normal components, boundaryID, boundaryType, C1, coupledNodeNumber
               constantBasedComponents = 4  ! maxCFL, boundaryStabilisationBeta, timeIncrement, stabilisationType
               EQUATIONS_EQUATIONS_SET_FIELD=>EQUATIONS_SET%EQUATIONS_SET_FIELD
@@ -551,10 +553,13 @@ CONTAINS
                   & EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD,ERR,ERROR,*999)
                 CALL FIELD_COMPONENT_MESH_COMPONENT_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD,FIELD_U_VARIABLE_TYPE, &
                   & 1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)                
-                CALL FIELD_COMPONENT_MESH_COMPONENT_SET_AND_LOCK(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
-                  & FIELD_U_VARIABLE_TYPE,1,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
-                CALL FIELD_COMPONENT_INTERPOLATION_SET_AND_LOCK(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
-                  & FIELD_U_VARIABLE_TYPE,1,FIELD_NODE_BASED_INTERPOLATION,ERR,ERROR,*999)
+                ! Node-based fields
+                DO componentIdx = 1, nodeBasedComponents
+                  CALL FIELD_COMPONENT_MESH_COMPONENT_SET_AND_LOCK(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                    & FIELD_U_VARIABLE_TYPE,componentIdx,GEOMETRIC_COMPONENT_NUMBER,ERR,ERROR,*999)
+                  CALL FIELD_COMPONENT_INTERPOLATION_SET_AND_LOCK(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                    & FIELD_U_VARIABLE_TYPE,componentIdx,FIELD_NODE_BASED_INTERPOLATION,ERR,ERROR,*999)
+                END DO
                 ! Element-based fields
                 DO componentIdx = 1, elementBasedComponents
                   CALL FIELD_COMPONENT_MESH_COMPONENT_SET_AND_LOCK(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
@@ -11926,6 +11931,19 @@ CONTAINS
             !   END DO
             !   normalViscousTerm(i) = viscosity*(SUM1 + SUM2)
             ! END DO
+
+            ! Check for Neumann integrated boundary types rather than fixe pressure types
+            IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
+             & boundaryType==BOUNDARY_CONDITION_PRESSURE) THEN
+              !Get the pressure value interpolation parameters
+              CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
+               & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
+              CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+               & dependentInterpolatedPoint,ERR,ERROR,*999)
+              boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
+              pressure = boundaryPressure
+            END IF
+
             cauchy = 0.0_DP
             cauchy2 = 0.0_DP
             cauchy3 = 0.0_DP            
@@ -11942,58 +11960,59 @@ CONTAINS
             END DO
             !DEBUG
             traction = MATMUL(cauchy,unitNormal)
+!            traction = -pressure
 
-            SELECT CASE(boundaryType)
-            CASE(BOUNDARY_CONDITION_COUPLING_STRESS)
-              !DEBUG
-              correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
-              correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
-              correction1D_3 = MATMUL(cauchy2,unitNormal)
-              stabilisationTerm = 0.0_DP
-              boundaryPressure=0.0_DP
-              !Get the pressure value interpolation parameters
-              CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
-               & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-              CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
-               & dependentInterpolatedPoint,ERR,ERROR,*999)
-              boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
-!              traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
-              traction = -boundaryPressure + beta*(correction1D_1+correction1D_2+correction1D_3)
-              ! ! Calculate Cauchy stress tensor
-              ! cauchy = 0.0_DP
-              ! cauchy2 = 0.0_DP
-              ! cauchy3 = 0.0_DP            
-              ! DO i = 1,3
-              !   DO j = 1,3
-              !     cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-              !     cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-              !     cauchy3(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-              !     IF(i==j) THEN
-              !       cauchy(i,j) = cauchy(i,j) - boundaryPressure
-              !       cauchy3(i,j) = cauchy(i,j) - pressure
-              !     END IF
-              !   END DO
-              ! END DO
-              !traction = MATMUL(cauchy,unitNormal) + beta*(correction1D_1+correction1D_2)
-              !traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
-            CASE(BOUNDARY_CONDITION_FIXED_PRESSURE)
-              ! Do nothing (traction=traction)
-            CASE(BOUNDARY_CONDITION_PRESSURE)
-              ! If this is a coupled stress boundary condition, we apply traction ((-pI + mu*(gradU+gradU_T)).normal).normal
-              ! Interpolate applied boundary pressure value
-              boundaryPressure=0.0_DP
-              !Get the pressure value interpolation parameters
-              CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
-               & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-              CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
-               & dependentInterpolatedPoint,ERR,ERROR,*999)
-              boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
-              traction = -boundaryPressure*unitNormal
-            CASE DEFAULT
-              LOCAL_ERROR="Boundary condition type "//TRIM(NUMBER_TO_VSTRING(boundaryType,"*",ERR,ERROR))// &
-                & " is not appropriate for as an integrated face type for 3D Navier-Stokes."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-            END SELECT
+!             SELECT CASE(boundaryType)
+!             CASE(BOUNDARY_CONDITION_COUPLING_STRESS)
+!               !DEBUG
+!               correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
+!               correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
+!               correction1D_3 = MATMUL(cauchy2,unitNormal)
+!               stabilisationTerm = 0.0_DP
+!               boundaryPressure=0.0_DP
+!               !Get the pressure value interpolation parameters
+!               CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
+!                & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
+!               CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+!                & dependentInterpolatedPoint,ERR,ERROR,*999)
+!               boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
+! !              traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
+!               traction = -boundaryPressure + beta*(correction1D_1+correction1D_2+correction1D_3)
+!               ! ! Calculate Cauchy stress tensor
+!               ! cauchy = 0.0_DP
+!               ! cauchy2 = 0.0_DP
+!               ! cauchy3 = 0.0_DP            
+!               ! DO i = 1,3
+!               !   DO j = 1,3
+!               !     cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+!               !     cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+!               !     cauchy3(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
+!               !     IF(i==j) THEN
+!               !       cauchy(i,j) = cauchy(i,j) - boundaryPressure
+!               !       cauchy3(i,j) = cauchy(i,j) - pressure
+!               !     END IF
+!               !   END DO
+!               ! END DO
+!               !traction = MATMUL(cauchy,unitNormal) + beta*(correction1D_1+correction1D_2)
+!               !traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
+!             CASE(BOUNDARY_CONDITION_FIXED_PRESSURE)
+!               ! Do nothing (traction=traction)
+!             CASE(BOUNDARY_CONDITION_PRESSURE)
+!               ! If this is a coupled stress boundary condition, we apply traction ((-pI + mu*(gradU+gradU_T)).normal).normal
+!               ! Interpolate applied boundary pressure value
+!               boundaryPressure=0.0_DP
+!               !Get the pressure value interpolation parameters
+!               CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
+!                & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
+!               CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+!                & dependentInterpolatedPoint,ERR,ERROR,*999)
+!               boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
+!               traction = -boundaryPressure*unitNormal
+!             CASE DEFAULT
+!               LOCAL_ERROR="Boundary condition type "//TRIM(NUMBER_TO_VSTRING(boundaryType,"*",ERR,ERROR))// &
+!                 & " is not appropriate for as an integrated face type for 3D Navier-Stokes."
+!               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+!             END SELECT
 
             !Jacobian and Gauss weighting term
             jacobianGaussWeights=pointMetrics%JACOBIAN*faceQuadratureScheme%GAUSS_WEIGHTS(gaussIdx)
@@ -12014,6 +12033,7 @@ CONTAINS
                     &  (traction(componentIdx)*normalProjection(componentIdx) + stabilisationTerm(componentIdx))* &
                     &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
                     &  jacobianGaussWeights
+
 !                    &  ( stabilisationTerm(componentIdx) - boundaryPressure*normalProjection(componentIdx))* &
 !                    &  (-boundaryPressure*normalProjection(componentIdx))* &
 !                    &  (-boundaryPressure)* &

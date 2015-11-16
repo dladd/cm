@@ -11665,7 +11665,7 @@ CONTAINS
     TYPE(EQUATIONS_MATRICES_RHS_TYPE), POINTER :: rhsVector
     TYPE(EQUATIONS_MATRICES_NONLINEAR_TYPE), POINTER :: nonlinearMatrices
     INTEGER(INTG) :: faceIdx, faceNumber
-    INTEGER(INTG) :: componentIdx, gaussIdx
+    INTEGER(INTG) :: componentIdx, componentIdx2, gaussIdx
     INTEGER(INTG) :: elementBaseDofIdx, faceNodeIdx, elementNodeIdx
     INTEGER(INTG) :: faceNodeDerivativeIdx, meshComponentNumber, nodeDerivativeIdx,elementParameterIdx
     INTEGER(INTG) :: faceParameterIdx,elementDof,normalComponentIdx
@@ -11673,7 +11673,7 @@ CONTAINS
     REAL(DP) :: pressure,viscosity,density,jacobianGaussWeights,beta,normalFlow,muScale
     REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm(3)
     REAL(DP) :: boundaryInPlaneVector1(3),boundaryInPlaneVector2(3),boundaryNormal(3),tempVector(3)
-    REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3)
+    REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
     REAL(DP) :: boundaryValue,normalDifference,normalTolerance,SUM1,SUM2,boundaryPressure
     REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
@@ -11888,7 +11888,7 @@ CONTAINS
             normalTolerance=0.1_DP
             IF(normalDifference < normalTolerance) THEN
               normalFlow = DOT_PRODUCT(velocity,normalProjection)
-              !normalFlow = DOT_PRODUCT(velocity,boundaryNormal)
+              !normalFlow = DOT_PRODUCT(velocity,unitNormal)
               IF(normalFlow < -ZERO_TOLERANCE) THEN
                 DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
                   stabilisationTerm(componentIdx) = 0.5_DP*beta*density*velocity(componentIdx)*(normalFlow - ABS(normalFlow))
@@ -11958,8 +11958,11 @@ CONTAINS
                 END IF
               END DO
             END DO
+            !correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
+            !correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
             !DEBUG
-            traction = MATMUL(cauchy,unitNormal)
+            traction = MATMUL(cauchy,normalProjection)
+            normalViscousTerm = MATMUL(cauchy2,normalProjection)
 !            traction = -pressure
 
 !             SELECT CASE(boundaryType)
@@ -12030,7 +12033,14 @@ CONTAINS
                   elementDof=elementBaseDofIdx+elementParameterIdx
                   
                   rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
-                    &  (traction(componentIdx)*normalProjection(componentIdx) + stabilisationTerm(componentIdx))* &
+!                    &  (traction(componentIdx)*normalProjection(componentIdx) + stabilisationTerm(componentIdx))* &
+!                    &  (traction(componentIdx) + stabilisationTerm(componentIdx))* &
+                    &  (-pressure*normalProjection(componentIdx))* &
+                    &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
+                    &  jacobianGaussWeights
+
+                  nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)+ &
+                    &  (normalViscousTerm(componentIdx) - stabilisationTerm(componentIdx))* &
                     &  faceQuadratureScheme%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)* &
                     &  jacobianGaussWeights
 

@@ -5017,8 +5017,6 @@ CONTAINS
                         & TOPOLOGY%ELEMENTS%ELEMENTS(ELEMENT_NUMBER)%BASIS
                       QUADRATURE_SCHEME2=>DEPENDENT_BASIS2%QUADRATURE%QUADRATURE_SCHEME_MAP&
                         &(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
-                      ! JGW=EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS%JACOBIAN*QUADRATURE_SCHEME2%&
-                      ! &GAUSS_WEIGHTS(ng)                        
                       DO ns=1,DEPENDENT_BASIS2%NUMBER_OF_ELEMENT_PARAMETERS
                         nhs=nhs+1
                         !Calculate some general values
@@ -5306,7 +5304,6 @@ CONTAINS
                   JGW=EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR%JACOBIAN* &
                     & QUADRATURE_SCHEME1%GAUSS_WEIGHTS(ng)
                   DXI_DX=0.0_DP
-
                   DO ni=1,DEPENDENT_BASIS1%NUMBER_OF_XI
                     DO mi=1,DEPENDENT_BASIS1%NUMBER_OF_XI
                       DXI_DX(mi,ni)=EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR%DXI_DX(mi,ni)
@@ -10889,11 +10886,11 @@ CONTAINS
             stabilisationType=NINT(stabilisationValueDP)
             ! Skip if type 0
             IF(stabilisationType > 0) THEN
+              ! TODO: put this somewhere more sensible. This is a workaround since we don't have access to the dynamic solver values
+              !       at this level in the element loop
               ! Get time step size and calc time derivative
               CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSetField,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                & 3,timeIncrement,err,error,*999)
-              ! TODO: put this somewhere more sensible. This is a workaround since we don't have access to the dynamic solver values
-              !       at this level in the element loop
               IF(equationsSet%SUBTYPE/=EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE .AND. timeIncrement < ZERO_TOLERANCE) THEN
                 CALL FLAG_ERROR("Please set the equations set field time increment to a value > 0.",ERR,ERROR,*999)                
               END IF
@@ -10984,7 +10981,7 @@ CONTAINS
               END DO
 
               ! Get number of element parameters for each dependent component
-              numberOfElementParameters=0.0_DP
+              numberOfElementParameters=0
               DO i=1,numberOfDimensions
                 numberOfElementParameters(i)=basisVelocity%NUMBER_OF_ELEMENT_PARAMETERS              
               END DO

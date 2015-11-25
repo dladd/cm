@@ -5597,6 +5597,11 @@ CONTAINS
                   END IF
                 END IF !version>1
               END DO !loop nodes
+              ! Update any distributed pressure field values
+              CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                & err,error,*999)
+              CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                & err,error,*999)
             END IF
           END IF
 
@@ -6683,6 +6688,15 @@ CONTAINS
                           END IF ! ghost/exist check
                         END DO !nodeIdx
                         CLOSE(UNIT=10)
+                        ! Update any distributed field values
+                        CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType,FIELD_VALUES_SET_TYPE, &
+                          & err,error,*999)
+                        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType,FIELD_VALUES_SET_TYPE, &
+                          & err,error,*999)
+                        CALL FIELD_PARAMETER_SET_UPDATE_START(INDEPENDENT_FIELD,independentVariableType,FIELD_VALUES_SET_TYPE, &
+                          & err,error,*999)
+                        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(INDEPENDENT_FIELD,independentVariableType,FIELD_VALUES_SET_TYPE, &
+                          & err,error,*999)
                       END IF !check import file exists
                     ELSE
                       CALL FLAG_ERROR("Equations set independent field is not associated.",ERR,ERROR,*999)
@@ -7225,6 +7239,15 @@ CONTAINS
                                             END DO !versionIdx
                                           END DO !derivativeIdx
                                         END DO !nodeIdx
+                                        ! Update distributed field values
+                                        CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_VALUES_SET_TYPE,err,error,*999)
+                                        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_VALUES_SET_TYPE,err,error,*999)
+                                        CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_ANALYTIC_VALUES_SET_TYPE,err,error,*999)
+                                        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_ANALYTIC_VALUES_SET_TYPE,err,error,*999)
                                       ELSE
                                         CALL FLAG_ERROR("Domain topology nodes is not associated.",ERR,ERROR,*999)
                                       END IF
@@ -7291,6 +7314,11 @@ CONTAINS
                                             END DO !versionIdx
                                           END DO !derivativeIdx
                                         END DO !nodeIdx
+                                        ! Update distributed field values
+                                        CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_VALUES_SET_TYPE,err,error,*999)
+                                        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType, &
+                                          & FIELD_VALUES_SET_TYPE,err,error,*999)
                                       ELSE
                                         CALL FLAG_ERROR("Domain topology nodes is not associated.",ERR,ERROR,*999)
                                       END IF
@@ -7434,6 +7462,15 @@ CONTAINS
                                   END IF ! ghost/exist check
                                 END DO !nodeIdx
                                 CLOSE(UNIT=10)
+                                ! Update any distributed field values
+                                CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType,FIELD_VALUES_SET_TYPE, &
+                                  & err,error,*999)
+                                CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType,FIELD_VALUES_SET_TYPE, &
+                                  & err,error,*999)
+                                CALL FIELD_PARAMETER_SET_UPDATE_START(INDEPENDENT_FIELD,independentVariableType,FIELD_VALUES_SET_TYPE, &
+                                  & err,error,*999)
+                                CALL FIELD_PARAMETER_SET_UPDATE_FINISH(INDEPENDENT_FIELD,independentVariableType,FIELD_VALUES_SET_TYPE, &
+                                  & err,error,*999)
                               END IF !check import file exists
                             ELSE
                               CALL FLAG_ERROR("Equations set independent field is not associated.",ERR,ERROR,*999)
@@ -7579,6 +7616,15 @@ CONTAINS
                                                         END DO !versionIdx
                                                       END DO !derivativeIdx
                                                     END DO !nodeIdx
+                                                    ! Update distributed field values
+                                                    CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType, &
+                                                      & FIELD_VALUES_SET_TYPE,err,error,*999)
+                                                    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType, &
+                                                      & FIELD_VALUES_SET_TYPE,err,error,*999)
+                                                    CALL FIELD_PARAMETER_SET_UPDATE_START(DEPENDENT_FIELD,dependentVariableType, &
+                                                      & FIELD_ANALYTIC_VALUES_SET_TYPE,err,error,*999)
+                                                    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(DEPENDENT_FIELD,dependentVariableType, &
+                                                      & FIELD_ANALYTIC_VALUES_SET_TYPE,err,error,*999)
                                                   ELSE
                                                     CALL FLAG_ERROR("Domain topology nodes is not associated.",ERR,ERROR,*999)
                                                   END IF
@@ -11073,6 +11119,11 @@ CONTAINS
               IF(ABS(C1-elementInverse) > ZERO_TOLERANCE) THEN
                 CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_ELEMENT(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                   & elementNumber,10,C1,err,error,*999)
+                ! Should probably move this field update it only happens one time for each element, when C1 undefined
+                CALL FIELD_PARAMETER_SET_UPDATE_START(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                  & err,error,*999)
+                CALL FIELD_PARAMETER_SET_UPDATE_FINISH(equationsSetField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                  & err,error,*999)
               END IF
 
               !----------------------------------------------------------
@@ -12484,7 +12535,10 @@ CONTAINS
           localBoundaryPressure(boundaryID) = localBoundaryPressure(boundaryID) + facePressure
           localBoundaryNormalStress(boundaryID) = localBoundaryNormalStress(boundaryID)+ faceTraction
         END IF !boundaryIdentifier
-      END DO !elementIdx                 
+      END DO !elementIdx           
+      ! Distribute any updated element fields
+      CALL FIELD_PARAMETER_SET_UPDATE_START(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
 
       ! G a t h e r   v a l u e s   o v e r   t h r e a d s 
       ! ------------------------------------------------------
@@ -12761,6 +12815,24 @@ CONTAINS
         END DO !faceIdx
       END IF !boundaryIdentifier
     END DO !elementIdx                 
+ 
+   ! Distribute any updated ields
+    IF (ASSOCIATED(equationsSetField3D)) THEN
+      CALL FIELD_PARAMETER_SET_UPDATE_START(equationsSetField3D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(equationsSetField3D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+    END IF
+    IF (ASSOCIATED(dependentField3D)) THEN
+      CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField3D,FIELD_U_VARIABLE_TYPE,FIELD_PRESSURE_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField3D,FIELD_U_VARIABLE_TYPE,FIELD_PRESSURE_VALUES_SET_TYPE,err,error,*999)
+    END IF
+    IF (ASSOCIATED(dependentField1D)) THEN
+      CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+    END IF
 
     CALL EXITS("NavierStokes_CalculateBoundaryFlux")
     RETURN
@@ -12957,6 +13029,14 @@ CONTAINS
 
       END IF !Find boundary nodes
     END DO !Loop over nodes 
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField,FIELD_U1_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField,FIELD_U1_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
     numberOfBoundaries = boundaryNumber
 
     IF(solverNumber == solver1dNavierStokesNumber) THEN
@@ -13204,6 +13284,10 @@ CONTAINS
 
       END IF !Find boundary nodes
     END DO !Loop over nodes 
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
     numberOfBoundaries = boundaryNumber
 
     ! ------------------------------------------------------------------
@@ -13491,6 +13575,10 @@ CONTAINS
 
       END IF !Find boundary nodes
     END DO !Loop over nodes 
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE,err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE,err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
     numberOfBranches = branchNumber
 
     ! ------------------------------------------------------------------
@@ -13699,6 +13787,8 @@ CONTAINS
           EXIT
         END IF
       END DO !elementIdx
+      CALL FIELD_PARAMETER_SET_UPDATE_START(materialsField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(materialsField,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
 
       IF(defaultUpdate .EQV. .TRUE.) THEN
         shearRateDefault=1.0E-10_DP
@@ -14347,6 +14437,9 @@ CONTAINS
           END IF ! boundary node
         END IF ! branch or boundary node
       END DO !Loop over nodes
+      ! Update distributed fields
+      CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
+      CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,err,error,*999)
 
     !!!-- O t h e r   3 D    E q u a t i o n s   S e t s --!!! 
     CASE(EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &

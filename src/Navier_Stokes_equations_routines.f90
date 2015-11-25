@@ -5607,7 +5607,7 @@ CONTAINS
           IF(RHS_VECTOR%UPDATE_VECTOR) THEN
             !If specified, also perform face integration for neumann boundary conditions
             IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
-              CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,ERR,ERROR,*999)
+              CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,.FALSE.,ERR,ERROR,*999)
             END IF
           END IF
 
@@ -6084,6 +6084,23 @@ CONTAINS
                 END DO !mh
               END IF
             END DO !ng
+
+            ! F a c e   I n t e g r a t i o n
+            IF(DEPENDENT_FIELD%DECOMPOSITION%CALCULATE_FACES) THEN
+              SELECT CASE(EQUATIONS_SET%SUBTYPE)
+              CASE(EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+                 & EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
+                 & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
+                ! Calculate the Jacobian of the nonlinear boundary stabilisation term if beta > 0
+                CALL FIELD_PARAMETER_SET_GET_CONSTANT(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
+                  & FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1,beta,err,error,*999)
+                IF (beta > ZERO_TOLERANCE) THEN
+                  CALL NavierStokes_FiniteElementFaceIntegrate(EQUATIONS_SET,ELEMENT_NUMBER,FIELD_VARIABLE,.TRUE.,ERR,ERROR,*999)
+                END IF
+              CASE DEFAULT
+                ! Do nothing for other equation set subtypes
+              END SELECT
+            END IF
 
           IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT1D_NAVIER_STOKES_SUBTYPE .OR. &
             & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_COUPLED1D0D_NAVIER_STOKES_SUBTYPE .OR. &
@@ -11643,12 +11660,13 @@ CONTAINS
   !>Calculates the face integration term of the finite element formulation for Navier-Stokes equation,
   !>required for pressure and multidomain boundary conditions. 
   !>portions based on DarcyEquation_FiniteElementFaceIntegrate by Adam Reeve.
-  SUBROUTINE NavierStokes_FiniteElementFaceIntegrate(equationsSet,elementNumber,dependentVariable,err,error,*)
+  SUBROUTINE NavierStokes_FiniteElementFaceIntegrate(equationsSet,elementNumber,dependentVariable,jacobianFlag,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet !<The equations set to calculate the RHS term for
     INTEGER(INTG), INTENT(IN) :: elementNumber !<The element number to calculate the RHS term for
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: dependentVariable
+    LOGICAL, INTENT(IN) ::  jacobianFlag !<Flag indicating whether this was called from the jacobian or residual evaluation routine
     INTEGER(INTG), INTENT(OUT) :: err !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
     !Local variables
@@ -11674,6 +11692,7 @@ CONTAINS
     TYPE(EQUATIONS_MATRICES_NONLINEAR_TYPE), POINTER :: nonlinearMatrices
     TYPE(EQUATIONS_MATRICES_DYNAMIC_TYPE), POINTER :: dynamicMatrices
     TYPE(EQUATIONS_MATRIX_TYPE), POINTER :: stiffnessMatrix
+    TYPE(EQUATIONS_JACOBIAN_TYPE), POINTER :: jacobianMatrix
     INTEGER(INTG) :: faceIdx, faceNumber
     INTEGER(INTG) :: componentIdx, componentIdx2, gaussIdx
     INTEGER(INTG) :: elementBaseDofIdx, faceNodeIdx, elementNodeIdx
@@ -11681,13 +11700,13 @@ CONTAINS
     INTEGER(INTG) :: faceParameterIdx,elementDof,normalComponentIdx
     INTEGER(INTG) :: faceParameterIdx2,elementDof2,elementBaseDofIdx2,faceNodeIdx2,elementNodeIdx2,faceNodeDerivativeIdx2
     INTEGER(INTG) :: meshComponentNumber2,nodeDerivativeIdx2,elementParameterIdx2
-    INTEGER(INTG) :: numberOfDimensions,i,j,boundaryType
+    INTEGER(INTG) :: numberOfDimensions,i,j,boundaryType,mi,ni
     REAL(DP) :: pressure,viscosity,density,jacobianGaussWeights,beta,normalFlow,muScale
-    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm(3)
+    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm
     REAL(DP) :: boundaryInPlaneVector1(3),boundaryInPlaneVector2(3),boundaryNormal(3),tempVector(3)
     REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
     REAL(DP) :: boundaryValue,normalDifference,normalTolerance,SUM1,SUM2,boundaryPressure
-    REAL(DP) :: dPhinDX,phim
+    REAL(DP) :: dPhinDX,phim,phin,SUM
     REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     LOGICAL :: integratedBoundary
@@ -11731,12 +11750,16 @@ CONTAINS
       IF(ASSOCIATED(equations)) THEN
         equationsMatrices=>equations%EQUATIONS_MATRICES
         IF(ASSOCIATED(equationsMatrices)) THEN
-          rhsVector=>equationsMatrices%RHS_VECTOR
           nonlinearMatrices=>equationsMatrices%NONLINEAR_MATRICES
-          dynamicMatrices=>equationsMatrices%DYNAMIC_MATRICES
-          stiffnessMatrix=>dynamicMatrices%MATRICES(1)%PTR
           IF(.NOT. ASSOCIATED(nonlinearMatrices)) THEN
             CALL FLAG_ERROR("Nonlinear Matrices not associated.",err,error,*999)
+          END IF
+          IF (jacobianFlag) THEN
+             jacobianMatrix=>nonlinearMatrices%JACOBIANS(1)%PTR
+          ELSE
+            rhsVector=>equationsMatrices%RHS_VECTOR
+            dynamicMatrices=>equationsMatrices%DYNAMIC_MATRICES
+            stiffnessMatrix=>dynamicMatrices%MATRICES(1)%PTR
           END IF
         END IF
       ELSE
@@ -11845,6 +11868,7 @@ CONTAINS
           faceBasis2=>decomposition%DOMAIN(meshComponentNumber2)%PTR%TOPOLOGY%FACES%FACES(faceNumber)%BASIS
           faceQuadratureScheme1=>faceBasis1%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
           faceQuadratureScheme2=>faceBasis2%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
+          ! Loop over face gauss points
           DO gaussIdx=1,faceQuadratureScheme1%NUMBER_OF_GAUSS
             CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
               & geometricInterpolatedPoint,err,error,*999)
@@ -11900,9 +11924,10 @@ CONTAINS
               normalFlow = DOT_PRODUCT(velocity,normalProjection)
               !normalFlow = DOT_PRODUCT(velocity,unitNormal)
               IF(normalFlow < -ZERO_TOLERANCE) THEN
-                DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                  stabilisationTerm(componentIdx) = 0.5_DP*beta*density*velocity(componentIdx)*(normalFlow - ABS(normalFlow))
-                END DO
+                stabilisationTerm = normalFlow - ABS(normalFlow)
+                ! DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                !   stabilisationTerm(componentIdx) = 0.5_DP*beta*density*velocity(componentIdx)*(normalFlow - ABS(normalFlow))
+                ! END DO
               ELSE
                 stabilisationTerm = 0.0_DP
               END IF
@@ -12037,47 +12062,62 @@ CONTAINS
                   faceParameterIdx=faceBasis1%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx,faceNodeIdx)
                   elementDof=elementBaseDofIdx+elementParameterIdx
                   phim = faceQuadratureScheme1%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)
-                  ! RHS contribution is integrated pressure term
-                  rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) - &
-                   &  pressure*normalProjection(componentIdx)*phim*jacobianGaussWeights
 
-                  ! ! nonlinear contribution is boundary stabilisation (if necessary )
-                  ! nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)- &
-                  !   &  stabilisationTerm(componentIdx))*phim*jacobianGaussWeights
-                  ! IF (jacobianFlag) THEN
-                  ! END IF
+                  IF (.NOT. jacobianFlag) THEN
+                    ! RHS contribution is integrated pressure term
+                    rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) - &
+                     &  pressure*normalProjection(componentIdx)*phim*jacobianGaussWeights
+                    ! nonlinear contribution is boundary stabilisation (if necessary )
+                    IF (beta > ZERO_TOLERANCE) THEN
+                      nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)-&
+                        & 0.5_DP*beta*density*phim*velocity(componentIdx)*stabilisationTerm*jacobianGaussWeights
+                    END IF
+                  END IF
 
-                  ! ! Stiffness matrix term is viscous boundary term (can be considered negligible in some cases)
-                  ! !Loop over field components
-                  ! DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                  !   !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
-                  !   elementBaseDofIdx2=dependentBasis2%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx2-1)
-                  !   DO faceNodeIdx2=1,faceBasis2%NUMBER_OF_NODES
-                  !     elementNodeIdx2=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx2,faceIdx)
-                  !     DO faceNodeDerivativeIdx2=1,faceBasis2%NUMBER_OF_DERIVATIVES(faceNodeIdx2)
-                  !       nodeDerivativeIdx2=dependentBasis2%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx2,
-                  !        & faceNodeIdx2,faceIdx)
-                  !       elementParameterIdx2=dependentBasis2%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx2,elementNodeIdx2)
-                  !       faceParameterIdx2=faceBasis2%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx2,faceNodeIdx2)
-                  !       elementDof2=elementBaseDofIdx2+elementParameterIdx2
-                  !       ! Calculate dphin/dXi
-                  !       dPhinDX = 0.0_DP
-                  !       DO ni=1,DEPENDENT_BASIS2%NUMBER_OF_XI
-                  !         dPhinDX=dPhinDX + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                  !          & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*DXiDX(ni,componentIdx2)
-                  !         IF (componentIdx = componentIdx2) THEN
-                  !           dPhinDX=dPhinDX + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                  !            & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*DXiDX(ni,componentIdx2)
-                  !         END IF
-                  !       END DO !ni
-                  !       ! mu*n_j*phim*(dPhin/dXi)(dXi/dX)
-                  !       stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
-                  !        & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
-                  !        & viscosity*normalProjection(componentIdx2)*phim*jacobianGaussWeights* &
-                  !        & dPhinDX
-                  !     END DO
-                  !   END DO
-                  ! END DO
+                  ! Stiffness matrix term is viscous boundary term (can be considered negligible in some cases)
+                  ! Jacobian matrix term is the derivative of the nonlinear stabilisation term
+                  !Loop over field components
+                  DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                    !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
+                    elementBaseDofIdx2=dependentBasis2%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx2-1)
+                    DO faceNodeIdx2=1,faceBasis2%NUMBER_OF_NODES
+                      elementNodeIdx2=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx2,faceIdx)
+                      DO faceNodeDerivativeIdx2=1,faceBasis2%NUMBER_OF_DERIVATIVES(faceNodeIdx2)
+                        nodeDerivativeIdx2=dependentBasis2%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx2, &
+                         & faceNodeIdx2,faceIdx)
+                        elementParameterIdx2=dependentBasis2%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx2,elementNodeIdx2)
+                        faceParameterIdx2=faceBasis2%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx2,faceNodeIdx2)
+                        elementDof2=elementBaseDofIdx2+elementParameterIdx2
+                        phin = faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2,NO_PART_DERIV,gaussIdx)
+                        ! Jacobian term
+                        IF (jacobianFlag) THEN
+                          IF (componentIdx == componentIdx2) THEN
+                            ! note that (u_j.n_j - |u_j.n_j|) term derivative will be zero
+                            jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2)= &
+                              & jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2) - &
+                              & 0.5_DP*beta*density*phim*phin*stabilisationTerm*jacobianGaussWeights                            
+                          END IF
+                        ELSE
+                          ! Calculate dphin/dXi
+                          SUM = 0.0_DP
+                          DO ni=1,faceBasis2%NUMBER_OF_XI
+                            SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                             & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,componentIdx2)
+                            IF (componentIdx == componentIdx2) THEN
+                              DO mi = 1,faceBasis2%NUMBER_OF_XI
+                                SUM = SUM  + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                                 & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,ni)
+                              END DO
+                            END IF
+                          END DO !ni
+                          ! viscous terms
+                          stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                           & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                           & viscosity*normalProjection(componentIdx2)*phim*SUM*jacobianGaussWeights
+                        END IF
+                      END DO
+                    END DO
+                  END DO
                         
                 END DO !nodeDerivativeIdx
               END DO !faceNodeIdx

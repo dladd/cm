@@ -4773,7 +4773,7 @@ CONTAINS
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: FIELD_VARIABLE
     TYPE(QUADRATURE_SCHEME_TYPE), POINTER :: QUADRATURE_SCHEME,QUADRATURE_SCHEME1,QUADRATURE_SCHEME2
     INTEGER(INTG) :: ng,mh,mhs,mi,ms,nh,nhs,ni,ns,nhs_max,mhs_max,nhs_min,mhs_min,xv,out
-    INTEGER(INTG) :: FIELD_VAR_TYPE,MESH_COMPONENT1,MESH_COMPONENT2,MESH_COMPONENT_NUMBER
+    INTEGER(INTG) :: FIELD_VAR_TYPE,MESH_COMPONENT1,MESH_COMPONENT2
     INTEGER(INTG) :: nodeIdx,xiIdx,coordIdx,derivativeIdx,versionIdx,elementVersionNumber,componentIdx
     INTEGER(INTG) :: numberOfVersions,nodeNumber,numberOfElementNodes,numberOfParameters,firstNode,lastNode
     REAL(DP) :: JGW,SUM,X(3),DXI_DX(3,3),DPHIMS_DXI(3),DPHINS_DXI(3),PHIMS,PHINS,momentum,mass,QUpwind,AUpwind,pExternal
@@ -5120,154 +5120,6 @@ CONTAINS
                   END IF
                 END DO !ms
               END DO !mh
-
-              ! !Analytic RHS vector
-              ! IF(RHS_VECTOR%FIRST_ASSEMBLY) THEN
-              !   IF(UPDATE_RHS_VECTOR) THEN
-              !     IF(ASSOCIATED(EQUATIONS_SET%ANALYTIC)) THEN
-              !       IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_1.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_2.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_3.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_4.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_5.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_ONE_DIM_1.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_1.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_2.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_3.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_4.OR. &
-              !         & EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_5) THEN
-              !         mhs=0
-              !         DO mh=1,FIELD_VARIABLE%NUMBER_OF_COMPONENTS-1
-              !           MESH_COMPONENT1=FIELD_VARIABLE%COMPONENTS(mh)%MESH_COMPONENT_NUMBER
-              !           DEPENDENT_BASIS1=>DEPENDENT_FIELD%DECOMPOSITION%DOMAIN(MESH_COMPONENT1)%PTR% &
-              !             & TOPOLOGY%ELEMENTS%ELEMENTS(ELEMENT_NUMBER)%BASIS
-              !           QUADRATURE_SCHEME1=>DEPENDENT_BASIS1%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
-              !           JGW=EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT_METRICS(FIELD_U_VARIABLE_TYPE)%PTR%JACOBIAN* &
-              !             & QUADRATURE_SCHEME1%GAUSS_WEIGHTS(ng)
-
-              !           DO ms=1,DEPENDENT_BASIS1%NUMBER_OF_ELEMENT_PARAMETERS
-              !             mhs=mhs+1
-              !             PHIMS=QUADRATURE_SCHEME1%GAUSS_BASIS_FNS(ms,NO_PART_DERIV,ng)
-              !             !note mh value derivative 
-              !             SUM=0.0_DP 
-              !             X(1) = EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(1,1)
-              !             X(2) = EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(2,1)
-              !             IF(DEPENDENT_BASIS1%NUMBER_OF_XI==3) THEN
-              !               X(3) = EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(3,1)
-              !             END IF
-              !             IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_1) THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP                         
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-2.0_DP/3.0_DP*(X(1)**3*RHO_PARAM+3.0_DP*MU_PARAM*10.0_DP**2- &
-              !                   & 3.0_DP*RHO_PARAM*X(2)**2*X(1))/(10.0_DP**4))
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_2) &
-              !               & THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP                               
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-4.0_DP*MU_PARAM/10.0_DP/10.0_DP*EXP((X(1)-X(2))/10.0_DP))
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_3) & 
-              !              & THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP         
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(16.0_DP*MU_PARAM*PI**2/10.0_DP**2*COS(2.0_DP*PI*X(2)/10.0_DP)* &
-              !                   & COS(2.0_DP*PI*X(1)/10.0_DP)- &
-              !                   & 2.0_DP*COS(2.0_DP*PI*X(2)/10.0_DP)*SIN(2.0_DP*PI*X(2)/10.0_DP)*RHO_PARAM*PI/10.0_DP)
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_4) & 
-              !              & THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(2.0_DP*SIN(X(1))*COS(X(2)))*MU_PARAM
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-2.0_DP*COS(X(1))*SIN(X(2)))*MU_PARAM
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE==EQUATIONS_SET_NAVIER_STOKES_EQUATION_TWO_DIM_5) & 
-              !              & THEN
-              !               !do nothing
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== & 
-              !               & EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_1) THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP       
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-2.0_DP/3.0_DP*(RHO_PARAM*X(1)**3+6.0_DP*RHO_PARAM*X(1)*X(3)*X(2)+ &
-              !                   & 6.0_DP*MU_PARAM*10.0_DP**2- & 
-              !                   & 3.0_DP*RHO_PARAM*X(2)**2*X(1)-3.0_DP*RHO_PARAM*X(3)*X(1)**2-3.0_DP*RHO_PARAM*X(3)*X(2)**2)/ &
-              !                     & (10.0_DP**4))
-              !               ELSE IF(mh==3) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-2.0_DP/3.0_DP*(6.0_DP*RHO_PARAM*X(1)*X(3)*X(2)+RHO_PARAM*X(1)**3+ &
-              !                   & 6.0_DP*MU_PARAM*10.0_DP**2- & 
-              !                   & 3.0_DP*RHO_PARAM*X(1)*X(3)**2-3.0_DP*RHO_PARAM*X(2)*X(1)**2-3.0_DP*RHO_PARAM*X(2)*X(3)**2)/ & 
-              !                   & (10.0_DP**4))
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== & 
-              !               & EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_2) THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP         
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*((-4.0_DP*MU_PARAM*EXP((X(1)-X(2))/10.0_DP)-2.0_DP*MU_PARAM*EXP((X(2)-X(3))/10.0_DP)+ & 
-              !                   & RHO_PARAM*EXP((X(3)-X(2))/10.0_DP)*10.0_DP)/10.0_DP**2)
-              !               ELSE IF(mh==3) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-(4.0_DP*MU_PARAM*EXP((X(3)-X(1))/10.0_DP)+2.0_DP*MU_PARAM*EXP((X(2)-X(3))/10.0_DP)+ & 
-              !                   & RHO_PARAM*EXP((X(3)-X(2))/10.0_DP)*10.0_DP)/10.0_DP** 2)
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== & 
-              !               & EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_3) THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 SUM=0.0_DP         
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(2.0_DP*COS(2.0_DP*PI*X(2)/10.0_DP)*(18.0_DP*COS(2.0_DP*PI*X(1)/10.0_DP)* &
-              !                   & MU_PARAM*PI*SIN(2.0_DP*PI*X(3)/10.0_DP)-3.0_DP*RHO_PARAM*COS(2.0_DP*PI*X(1)/10.0_DP)**2* &
-              !                   & SIN(2.0_DP*PI*X(2)/10.0_DP)*10.0_DP-2.0_DP*RHO_PARAM*SIN(2.0_DP*PI*X(2)/10.0_DP)*10.0_DP+ & 
-              !                   & 2.0_DP*RHO_PARAM*SIN(2.0_DP*PI*X(2)/10.0_DP)*10.0_DP*COS(2.0_DP*PI*X(3)/10.0_DP)**2)*PI/ &
-              !                   & 10.0_DP**2)
-              !               ELSE IF(mh==3) THEN
-              !                 !Calculate SUM 
-              !                 SUM=PHIMS*(-2.0_DP*PI*COS(2.0_DP*PI*X(3)/10.0_DP)*RHO_PARAM*SIN(2.0_DP*PI*X(3)/10.0_DP)* & 
-              !                   & (-1.0_DP+COS(2.0_DP*PI*X(2)/10.0_DP)**2)/10.0_DP)
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== &
-              !               & EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_4) THEN
-              !               IF(mh==1) THEN 
-              !                 !Calculate SUM 
-              !                 !SUM=PHIMS*(2.0_DP*SIN(X(1))*COS(X(2)))*MU_PARAM
-              !               ELSE IF(mh==2) THEN
-              !                 !Calculate SUM 
-              !                 !SUM=PHIMS*(-2.0_DP*COS(X(1))*SIN(X(2)))*MU_PARAM
-              !               END IF
-              !             ELSE IF(EQUATIONS_SET%ANALYTIC%ANALYTIC_FUNCTION_TYPE== &
-              !               & EQUATIONS_SET_NAVIER_STOKES_EQUATION_THREE_DIM_5) THEN
-              !               !do nothing
-              !             END IF
-              !             !Calculate RH VECTOR
-              !              RHS_VECTOR%ELEMENT_VECTOR%VECTOR(mhs)=RHS_VECTOR%ELEMENT_VECTOR%VECTOR(mhs)+SUM*JGW
-              !           END DO !ms
-              !         END DO !mh
-              !       ELSE
-              !         !RHS_VECTOR%ELEMENT_VECTOR%VECTOR(mhs)=0.0_DP
-              !       END IF                 
-              !     END IF
-              !   END IF                                                                     
-              ! END IF
 
               !Calculate nonlinear vector
               IF(UPDATE_NONLINEAR_RESIDUAL) THEN
@@ -5673,7 +5525,6 @@ CONTAINS
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
     TYPE(BASIS_TYPE), POINTER :: DEPENDENT_BASIS,DEPENDENT_BASIS1,DEPENDENT_BASIS2,GEOMETRIC_BASIS,INDEPENDENT_BASIS
-    TYPE(DECOMPOSITION_TYPE), POINTER :: DECOMPOSITION
     TYPE(DOMAIN_ELEMENTS_TYPE), POINTER :: ELEMENTS_TOPOLOGY
     TYPE(EQUATIONS_TYPE), POINTER :: EQUATIONS
     TYPE(EQUATIONS_MAPPING_TYPE), POINTER :: EQUATIONS_MAPPING
@@ -5693,7 +5544,7 @@ CONTAINS
     INTEGER(INTG) :: ng,mh,mhs,mi,ms,nh,nhs,ni,ns,x,xiIdx,coordIdx
     INTEGER(INTG) :: derivativeIdx,elementVersionNumber,firstNode,lastNode,nodeIdx,nodeNumber
     INTEGER(INTG) :: numberOfElementNodes,numberOfParameters,numberOfVersions,componentIdx
-    INTEGER(INTG) :: FIELD_VAR_TYPE,MESH_COMPONENT_NUMBER,MESH_COMPONENT1,MESH_COMPONENT2
+    INTEGER(INTG) :: FIELD_VAR_TYPE,MESH_COMPONENT1,MESH_COMPONENT2
     REAL(DP) :: JGW,SUM,DXI_DX(3,3),DPHIMS_DXI(3),DPHINS_DXI(3),PHIMS,PHINS
     REAL(DP) :: U_VALUE(3),W_VALUE(3),U_DERIV(3,3),Q_VALUE,Q_DERIV,A_VALUE,A_DERIV,alpha,beta,normal,normalWave,kappa
     REAL(DP) :: MU_PARAM,RHO_PARAM,A0_PARAM,A0_DERIV,E_PARAM,E_DERIV,H_PARAM,H_DERIV,mass,momentum1,momentum2,muScale
@@ -11748,14 +11599,14 @@ CONTAINS
     INTEGER(INTG) :: faceParameterIdx,elementDof,normalComponentIdx
     INTEGER(INTG) :: faceParameterIdx2,elementDof2,elementBaseDofIdx2,faceNodeIdx2,elementNodeIdx2,faceNodeDerivativeIdx2
     INTEGER(INTG) :: meshComponentNumber2,nodeDerivativeIdx2,elementParameterIdx2
-    INTEGER(INTG) :: numberOfDimensions,i,j,boundaryType,mi,ni
+    INTEGER(INTG) :: numberOfDimensions,boundaryType,mi,ni
     REAL(DP) :: pressure,viscosity,density,jacobianGaussWeights,beta,normalFlow,muScale
-    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),normalViscousTerm(3),stabilisationTerm
+    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),stabilisationTerm
     REAL(DP) :: boundaryInPlaneVector1(3),boundaryInPlaneVector2(3),boundaryNormal(3),tempVector(3)
-    REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
-    REAL(DP) :: boundaryValue,normalDifference,normalTolerance,SUM1,SUM2,boundaryPressure
-    REAL(DP) :: dPhinDX,phim,phin,SUM
-    REAL(DP) :: dUDXi(3,3),dXiDX(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
+    !REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
+    REAL(DP) :: boundaryValue,normalDifference,normalTolerance,boundaryPressure
+    REAL(DP) :: phim,phin,SUM
+    REAL(DP) :: dXiDX(3,3) !,dUDXi(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     LOGICAL :: integratedBoundary
 
@@ -11926,7 +11777,6 @@ CONTAINS
 
             ! TODO: this sort of thing should be moved to a more general Basis_FaceNormalGet (or similar) routine
             !Get face normal projection
-            i = 1
             DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
               normalProjection(componentIdx)=DOT_PRODUCT(pointMetrics%GU(normalComponentIdx,:),pointMetrics%DX_DXI(componentIdx,:))
               IF(face%XI_DIRECTION<0) THEN
@@ -11988,23 +11838,24 @@ CONTAINS
             ! Interpolate current solution velocity/pressure field values
             pressure=0.0_DP
             velocity=0.0_DP
-            dUDXi=0.0_DP
             CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,elementNumber,equations%INTERPOLATION% &
              & DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)              
             !Get interpolated velocity and pressure 
-            CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+            !CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
+            !  & dependentInterpolatedPoint,err,error,*999)
+            CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
               & dependentInterpolatedPoint,err,error,*999)
             velocity(1)=dependentInterpolatedPoint%values(1,NO_PART_DERIV) 
             velocity(2)=dependentInterpolatedPoint%values(2,NO_PART_DERIV) 
             velocity(3)=dependentInterpolatedPoint%values(3,NO_PART_DERIV) 
-            dUDXi(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
-            dUDXi(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
-            dUDXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
+            ! dUDXi(1:3,1)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S1)
+            ! dUDXi(1:3,2)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S2)
+            ! dUDXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
             pressure=dependentInterpolatedPoint%values(4,NO_PART_DERIV) 
             ! Calculate viscous term
             dXiDX=0.0_DP
             dXiDX=pointMetrics%DXI_DX(:,:)
-            CALL MATRIX_PRODUCT(dUDXi,dXiDX,gradU,err,error,*999)
+            !CALL MATRIX_PRODUCT(dUDXi,dXiDX,gradU,err,error,*999)
 
             ! Check for Neumann integrated boundary types rather than fixe pressure types
             IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
@@ -12021,79 +11872,6 @@ CONTAINS
               boundaryPressure=pressureInterpolatedPoint%VALUES(4,NO_PART_DERIV)
               pressure = boundaryPressure
             END IF
-
-            ! cauchy = 0.0_DP
-            ! cauchy2 = 0.0_DP
-            ! cauchy3 = 0.0_DP            
-            ! traction = 0.0_DP
-            ! ! Calculate Cauchy stress tensor
-            ! DO i = 1,3
-            !   DO j = 1,3
-            !     cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-            !     cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-            !     IF(i==j) THEN
-            !       cauchy(i,j) = cauchy(i,j) - pressure
-            !     END IF
-            !   END DO
-            ! END DO
-            ! !correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
-            ! !correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
-            ! !DEBUG
-            ! traction = MATMUL(cauchy,normalProjection)
-            ! normalViscousTerm = MATMUL(cauchy2,normalProjection)
-!            traction = -pressure
-
-!             SELECT CASE(boundaryType)
-!             CASE(BOUNDARY_CONDITION_COUPLING_STRESS)
-!               !DEBUG
-!               correction1D_1 = MATMUL(cauchy2,boundaryInPlaneVector1)
-!               correction1D_2 = MATMUL(cauchy2,boundaryInPlaneVector2)
-!               correction1D_3 = MATMUL(cauchy2,unitNormal)
-!               stabilisationTerm = 0.0_DP
-!               boundaryPressure=0.0_DP
-!               !Get the pressure value interpolation parameters
-!               CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
-!                & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-!               CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
-!                & dependentInterpolatedPoint,ERR,ERROR,*999)
-!               boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
-! !              traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
-!               traction = -boundaryPressure + beta*(correction1D_1+correction1D_2+correction1D_3)
-!               ! ! Calculate Cauchy stress tensor
-!               ! cauchy = 0.0_DP
-!               ! cauchy2 = 0.0_DP
-!               ! cauchy3 = 0.0_DP            
-!               ! DO i = 1,3
-!               !   DO j = 1,3
-!               !     cauchy(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-!               !     cauchy2(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-!               !     cauchy3(i,j) = viscosity*(gradU(i,j)+gradU(j,i))
-!               !     IF(i==j) THEN
-!               !       cauchy(i,j) = cauchy(i,j) - boundaryPressure
-!               !       cauchy3(i,j) = cauchy(i,j) - pressure
-!               !     END IF
-!               !   END DO
-!               ! END DO
-!               !traction = MATMUL(cauchy,unitNormal) + beta*(correction1D_1+correction1D_2)
-!               !traction = -boundaryPressure*unitNormal + beta*(correction1D_1+correction1D_2)
-!             CASE(BOUNDARY_CONDITION_FIXED_PRESSURE)
-!               ! Do nothing (traction=traction)
-!             CASE(BOUNDARY_CONDITION_PRESSURE)
-!               ! If this is a coupled stress boundary condition, we apply traction ((-pI + mu*(gradU+gradU_T)).normal).normal
-!               ! Interpolate applied boundary pressure value
-!               boundaryPressure=0.0_DP
-!               !Get the pressure value interpolation parameters
-!               CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PRESSURE_VALUES_SET_TYPE,elementNumber,equations% &
-!                & INTERPOLATION%DEPENDENT_INTERP_PARAMETERS(FIELD_U_VARIABLE_TYPE)%PTR,ERR,ERROR,*999)
-!               CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
-!                & dependentInterpolatedPoint,ERR,ERROR,*999)
-!               boundaryPressure=EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR%VALUES(4,NO_PART_DERIV)
-!               traction = -boundaryPressure*unitNormal
-!             CASE DEFAULT
-!               LOCAL_ERROR="Boundary condition type "//TRIM(NUMBER_TO_VSTRING(boundaryType,"*",ERR,ERROR))// &
-!                 & " is not appropriate for as an integrated face type for 3D Navier-Stokes."
-!               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-!             END SELECT
 
             !Jacobian and Gauss weighting term
             jacobianGaussWeights=pointMetrics%JACOBIAN*faceQuadratureScheme1%GAUSS_WEIGHTS(gaussIdx)
@@ -13121,7 +12899,7 @@ CONTAINS
     REAL(DP) :: normalWave(2)
     REAL(DP) :: flow1D,stress1D,flow1DPrevious,stress1DPrevious,flow3D,stress3D,flowError,stressError
     REAL(DP) :: maxStressError,maxFlowError,flowTolerance,stressTolerance,absoluteCouplingTolerance,relativeCouplingTolerance
-    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,globalConverged,converged
+    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,globalConverged
 
     CALL ENTERS("NavierStokes_Couple3D1D",ERR,ERROR,*999)
 

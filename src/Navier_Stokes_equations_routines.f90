@@ -11819,8 +11819,8 @@ CONTAINS
             normalDifference=L2NORM(boundaryNormal-unitNormal)
             normalTolerance=0.1_DP
             IF(normalDifference < normalTolerance) THEN
-              !normalFlow = DOT_PRODUCT(velocity,normalProjection)
-              normalFlow = DOT_PRODUCT(velocity,unitNormal)
+              normalFlow = DOT_PRODUCT(velocity,normalProjection)
+              !normalFlow = DOT_PRODUCT(velocity,unitNormal)
               IF(normalFlow < -ZERO_TOLERANCE) THEN
                 stabilisationTerm = normalFlow - ABS(normalFlow)
                 ! DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
@@ -11924,26 +11924,25 @@ CONTAINS
                               & 0.5_DP*beta*density*phim*phin*stabilisationTerm*jacobianGaussWeights                            
                           END IF
                         ELSE
-                          ! Calculate dphin/dXi
-                          SUM = 0.0_DP 
-                          SUM2 = 0.0_DP 
-                          DO mi=1,faceBasis2%NUMBER_OF_XI
-                            ! d(u_j)/d(x_i) 
-                            SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                             & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
-                            IF (componentIdx == componentIdx2) THEN
-                              ! d(u_i)/d(x_j) 
-                              DO ni = 1,faceBasis2%NUMBER_OF_XI
-                                SUM2 = SUM2 + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                                 & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
-                              END DO
-                            END IF
-                          END DO
-                          ! viscous terms
-                         stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
-                          & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
-                          & viscosity*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
-!                          & viscosity*phin*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
+                         !  ! Calculate dphin/dXi
+                         !  SUM = 0.0_DP 
+                         !  SUM2 = 0.0_DP 
+                         !  DO mi=1,faceBasis2%NUMBER_OF_XI
+                         !    ! d(u_j)/d(x_i) 
+                         !    SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                         !     & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
+                         !    IF (componentIdx == componentIdx2) THEN
+                         !      ! d(u_i)/d(x_j) 
+                         !      DO ni = 1,faceBasis2%NUMBER_OF_XI
+                         !        SUM2 = SUM2 + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                         !         & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
+                         !      END DO
+                         !    END IF
+                         !  END DO
+                         !  ! viscous terms
+                         ! stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                         !  & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                         !  & viscosity*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
                         END IF
                       END DO
                     END DO
@@ -12123,7 +12122,7 @@ CONTAINS
       localBoundaryArea = 0.0_DP
       localBoundaryPressure = 0.0_DP
       localBoundaryNormalStress = 0.0_DP
-      DO elementIdx=1,elementsMapping3D%TOTAL_NUMBER_OF_LOCAL
+      DO elementIdx=1,elementsMapping3D%NUMBER_OF_LOCAL
         meshComponentNumber=dependentVariable3D%COMPONENTS(1)%MESH_COMPONENT_NUMBER
         dependentBasis=>decomposition3D%DOMAIN(meshComponentNumber)%PTR%TOPOLOGY%ELEMENTS% &
           & ELEMENTS(elementIdx)%BASIS

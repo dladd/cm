@@ -6396,7 +6396,7 @@ CONTAINS
     REAL(DP), POINTER :: independentParameters(:),dependentParameters(:) 
     REAL(DP), ALLOCATABLE :: nodeData(:,:),qSpline(:),qValues(:),tValues(:),BoundaryValues(:)
     LOGICAL :: ghostNode,nodeExists,importDataFromFile,ALENavierStokesEquationsSetFound=.FALSE.
-    LOGICAL :: SolidEquationsSetFound=.FALSE.,SolidNodeFound=.FALSE.,FluidEquationsSetFound=.FALSE.
+    LOGICAL :: SolidEquationsSetFound=.FALSE.,SolidNodeFound=.FALSE.,FluidEquationsSetFound=.FALSE.,parameterSetCreated
     CHARACTER(70) :: inputFile,tempString
 
     NULLIFY(SOLVER_EQUATIONS)
@@ -7006,6 +7006,7 @@ CONTAINS
                         BOUNDARY_CONDITIONS=>SOLVER_EQUATIONS%BOUNDARY_CONDITIONS
                         DEPENDENT_FIELD=>EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD
                         ANALYTIC_FIELD=>EQUATIONS_SET%ANALYTIC%ANALYTIC_FIELD
+
                         DO variableIdx=1,DEPENDENT_FIELD%NUMBER_OF_VARIABLES
                           dependentVariableType=DEPENDENT_FIELD%VARIABLES(variableIdx)%VARIABLE_TYPE
                           NULLIFY(dependentFieldVariable)
@@ -7022,71 +7023,72 @@ CONTAINS
                                     IF(ASSOCIATED(domain%TOPOLOGY)) THEN
                                       DOMAIN_NODES=>domain%TOPOLOGY%NODES
                                       IF(ASSOCIATED(DOMAIN_NODES)) THEN
+                                        ! Create the analytic field values type on the dependent field if it does not exist
+                                        CALL FIELD_PARAMETER_SET_CREATED(DEPENDENT_FIELD,dependentVariableType, &
+                                         & FIELD_ANALYTIC_VALUES_SET_TYPE,parameterSetCreated,ERR,ERROR,*999)
+                                        IF (.NOT. parameterSetCreated) THEN
+                                          CALL FIELD_PARAMETER_SET_CREATE(DEPENDENT_FIELD,dependentVariableType, &
+                                           & FIELD_ANALYTIC_VALUES_SET_TYPE,ERR,ERROR,*999)
+                                        END IF
                                         !Loop over the local nodes excluding the ghosts.
                                         DO nodeIdx=1,DOMAIN_NODES%NUMBER_OF_NODES
                                           userNodeNumber=DOMAIN_NODES%NODES(nodeIdx)%USER_NUMBER
                                           DO derivativeIdx=1,DOMAIN_NODES%NODES(nodeIdx)%NUMBER_OF_DERIVATIVES
                                             DO versionIdx=1,DOMAIN_NODES%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%numberOfVersions
-                                              ! Update analytic field if file exists and dependent field if boundary condition set
-                                              inputFile = './input/interpolatedData/1D/' 
-                                              IF(dependentVariableType == FIELD_U_VARIABLE_TYPE) THEN
-                                                inputFile = TRIM(inputFile) // 'U/component' 
-                                              END IF
-                                              WRITE(tempString,"(I1.1)") componentIdx 
-                                              inputFile = TRIM(inputFile) // tempString(1:1) // '/derivative'
-                                              WRITE(tempString,"(I1.1)") derivativeIdx 
-                                              inputFile = TRIM(inputFile) // tempString(1:1) // '/version'
-                                              WRITE(tempString,"(I1.1)") versionIdx 
-                                              inputFile = TRIM(inputFile) // tempString(1:1) // '/'
-                                              WRITE(tempString,"(I4.4)") userNodeNumber
-                                              inputFile = TRIM(inputFile) // tempString(1:4) // '.dat'
-                                              inputFile = TRIM(inputFile)
-                                              INQUIRE(FILE=inputFile, EXIST=importDataFromFile)
-                                              IF(importDataFromFile) THEN
-                                                ! Create the analytic field values type on the dependent field if it does not exist
-                                                IF(.NOT.ASSOCIATED(dependentFieldVariable%PARAMETER_SETS% &
-                                                  & SET_TYPE(FIELD_ANALYTIC_VALUES_SET_TYPE)%PTR)) &
-                                                  & CALL FIELD_PARAMETER_SET_CREATE(DEPENDENT_FIELD,dependentVariableType, &
-                                                  & FIELD_ANALYTIC_VALUES_SET_TYPE,ERR,ERROR,*999)
-                                                !Read fitted data from input file (if exists)
-                                                OPEN(UNIT=10, FILE=inputFile, STATUS='OLD')                  
-                                                ! Header timeData = numberOfTimesteps
-                                                READ(10,*) timeData
-                                                numberOfSourceTimesteps = INT(timeData)
-                                                ALLOCATE(nodeData(numberOfSourceTimesteps,2))
-                                                ALLOCATE(qValues(numberOfSourceTimesteps))
-                                                ALLOCATE(tValues(numberOfSourceTimesteps))
-                                                ALLOCATE(qSpline(numberOfSourceTimesteps))
-                                                nodeData = 0.0_DP                                            
-                                                ! Read in time and dependent value
-                                                DO timeIdx=1,numberOfSourceTimesteps
-                                                  READ(10,*) (nodeData(timeIdx,component_idx), component_idx=1,2)
-                                                END DO
-                                                CLOSE(UNIT=10)
-                                                tValues = nodeData(:,1)
-                                                qValues = nodeData(:,2)
-                                                CALL spline_cubic_set(numberOfSourceTimesteps,tValues,qValues,2,0.0_DP,2,0.0_DP, &
-                                                  & qSpline,err,error,*999)
-                                                CALL spline_cubic_val(numberOfSourceTimesteps,tValues,qValues,qSpline, & 
-                                                  & CURRENT_TIME,VALUE,QP,QPP,err,error,*999)
-
-                                                DEALLOCATE(nodeData)
-                                                DEALLOCATE(qSpline)
-                                                DEALLOCATE(qValues)
-                                                DEALLOCATE(tValues)
-
-                                                dependentDof = dependentFieldVariable%COMPONENTS(componentIdx)%PARAM_TO_DOF_MAP% &
-                                                 & NODE_PARAM2DOF_MAP%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%VERSIONS(versionIdx)
-                                                CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(DEPENDENT_FIELD,dependentVariableType, &
-                                                  & FIELD_ANALYTIC_VALUES_SET_TYPE,dependentDof,VALUE,ERR,ERROR,*999)
-                                                ! Update dependent field value if this is a splint BC
-                                                BOUNDARY_CONDITION_CHECK_VARIABLE=BOUNDARY_CONDITIONS_VARIABLE% &
-                                                  & CONDITION_TYPES(dependentDof)
-                                                IF(BOUNDARY_CONDITION_CHECK_VARIABLE==BOUNDARY_CONDITION_FIXED_FITTED) THEN 
+                                              dependentDof = dependentFieldVariable%COMPONENTS(componentIdx)%PARAM_TO_DOF_MAP% &
+                                               & NODE_PARAM2DOF_MAP%NODES(nodeIdx)%DERIVATIVES(derivativeIdx)%VERSIONS(versionIdx)
+                                              ! Update dependent field value if this is a splint BC
+                                              BOUNDARY_CONDITION_CHECK_VARIABLE=BOUNDARY_CONDITIONS_VARIABLE% &
+                                                & CONDITION_TYPES(dependentDof)
+                                              IF(BOUNDARY_CONDITION_CHECK_VARIABLE==BOUNDARY_CONDITION_FIXED_FITTED) THEN 
+                                                ! Update analytic field if file exists and dependent field if boundary condition set
+                                                inputFile = './input/interpolatedData/1D/' 
+                                                IF(dependentVariableType == FIELD_U_VARIABLE_TYPE) THEN
+                                                  inputFile = TRIM(inputFile) // 'U/component' 
+                                                END IF
+                                                WRITE(tempString,"(I1.1)") componentIdx 
+                                                inputFile = TRIM(inputFile) // tempString(1:1) // '/derivative'
+                                                WRITE(tempString,"(I1.1)") derivativeIdx 
+                                                inputFile = TRIM(inputFile) // tempString(1:1) // '/version'
+                                                WRITE(tempString,"(I1.1)") versionIdx 
+                                                inputFile = TRIM(inputFile) // tempString(1:1) // '/'
+                                                WRITE(tempString,"(I4.4)") userNodeNumber
+                                                inputFile = TRIM(inputFile) // tempString(1:4) // '.dat'
+                                                inputFile = TRIM(inputFile)
+                                                INQUIRE(FILE=inputFile, EXIST=importDataFromFile)
+                                                IF(importDataFromFile) THEN
+                                                  !Read fitted data from input file (if exists)
+                                                  OPEN(UNIT=10, FILE=inputFile, STATUS='OLD')                  
+                                                  ! Header timeData = numberOfTimesteps
+                                                  READ(10,*) timeData
+                                                  numberOfSourceTimesteps = INT(timeData)
+                                                  ALLOCATE(nodeData(numberOfSourceTimesteps,2))
+                                                  ALLOCATE(qValues(numberOfSourceTimesteps))
+                                                  ALLOCATE(tValues(numberOfSourceTimesteps))
+                                                  ALLOCATE(qSpline(numberOfSourceTimesteps))
+                                                  nodeData = 0.0_DP                                            
+                                                  ! Read in time and dependent value
+                                                  DO timeIdx=1,numberOfSourceTimesteps
+                                                    READ(10,*) (nodeData(timeIdx,component_idx), component_idx=1,2)
+                                                  END DO
+                                                  CLOSE(UNIT=10)
+                                                  tValues = nodeData(:,1)
+                                                  qValues = nodeData(:,2)
+                                                  CALL spline_cubic_set(numberOfSourceTimesteps,tValues,qValues,2,0.0_DP,2,0.0_DP, &
+                                                    & qSpline,err,error,*999)
+                                                  CALL spline_cubic_val(numberOfSourceTimesteps,tValues,qValues,qSpline, & 
+                                                    & CURRENT_TIME,VALUE,QP,QPP,err,error,*999)
+                                                  DEALLOCATE(nodeData)
+                                                  DEALLOCATE(qSpline)
+                                                  DEALLOCATE(qValues)
+                                                  DEALLOCATE(tValues)
                                                   CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(DEPENDENT_FIELD,dependentVariableType, &
                                                     & FIELD_VALUES_SET_TYPE,dependentDof,VALUE,ERR,ERROR,*999)
+                                                  CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(DEPENDENT_FIELD,dependentVariableType, &
+                                                    & FIELD_ANALYTIC_VALUES_SET_TYPE,dependentDof,VALUE,ERR,ERROR,*999)
                                                 END IF
-                                              END IF ! check if import data file exists
+
+                                              END IF ! check if this is a fitted node
                                             END DO !versionIdx
                                           END DO !derivativeIdx
                                         END DO !nodeIdx
@@ -11819,8 +11821,8 @@ CONTAINS
             normalDifference=L2NORM(boundaryNormal-unitNormal)
             normalTolerance=0.1_DP
             IF(normalDifference < normalTolerance) THEN
-              normalFlow = DOT_PRODUCT(velocity,normalProjection)
-              !normalFlow = DOT_PRODUCT(velocity,unitNormal)
+              !normalFlow = DOT_PRODUCT(velocity,normalProjection)
+              normalFlow = DOT_PRODUCT(velocity,unitNormal)
               IF(normalFlow < -ZERO_TOLERANCE) THEN
                 stabilisationTerm = normalFlow - ABS(normalFlow)
                 ! DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1

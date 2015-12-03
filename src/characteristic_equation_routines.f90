@@ -992,15 +992,7 @@ CONTAINS
               DO versionIdx=1,numberOfVersions
                 IF(ABS(normalWave(componentIdx,versionIdx))>ZERO_TOLERANCE) THEN
                   rowIdx=rowIdx+1
-                  IF(versionIdx==1) THEN
-                    SUM=0.0_DP
-                    DO componentIdx2=1,2
-                      DO versionIdx2=1,numberOfVersions
-                        SUM=SUM+normalWave(componentIdx2,versionIdx2)*Q_BIF(versionIdx2)
-                      ENDDO
-                    ENDDO
-                    nonlinearMatrices%NodalResidual%vector(rowIdx)=SUM
-                  ELSE
+                  IF(versionIdx/=1) THEN
                     nonlinearMatrices%NodalResidual%vector(rowIdx)= &
                       & (rho/2.0_DP*((Q_BIF(1)/A_BIF(1))**2.0_DP) + Beta(1)*(SQRT(A_BIF(1)) - SQRT(A0_PARAM(1)))) - &
                       & (rho/2.0_DP*((Q_BIF(versionIdx)/A_BIF(versionIdx))**2.0_DP) + &
@@ -1196,18 +1188,6 @@ CONTAINS
                   jacobianMatrix%NodalJacobian%matrix(rowIdx,columnIdx)=(-Q_BIF(versionIdx)/(A_BIF(versionIdx)**2)) &
                     & +normalWave(componentIdx,versionIdx)*SQRT(Beta(versionIdx)/(2.0_DP*rho))*(A_BIF(versionIdx)**(-0.75_DP))
                 ENDIF
-              ENDDO
-            ENDDO
-
-            !Conservation of Mass
-            rowIdx=numberOfVersions+1
-            columnIdx = 0
-            DO componentIdx=1,2
-              DO versionIdx=1,numberOfVersions
-                IF(ABS(normalWave(componentIdx,versionIdx))>ZERO_TOLERANCE) THEN
-                  columnIdx=columnIdx+1
-                  jacobianMatrix%NodalJacobian%matrix(rowIdx,columnIdx)=normalWave(componentIdx,versionIdx)
-                ENDIF                
               ENDDO
             ENDDO
 

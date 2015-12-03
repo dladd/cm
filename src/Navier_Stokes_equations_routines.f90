@@ -11603,7 +11603,7 @@ CONTAINS
     INTEGER(INTG) :: meshComponentNumber2,nodeDerivativeIdx2,elementParameterIdx2
     INTEGER(INTG) :: numberOfDimensions,boundaryType,mi,ni
     REAL(DP) :: pressure,viscosity,density,jacobianGaussWeights,beta,normalFlow,muScale
-    REAL(DP) :: velocity(3),normalProjection(3),unitNormal(3),stabilisationTerm
+    REAL(DP) :: velocity(3),normalProjection(3),tangentProjection(2,3),unitNormal(3),stabilisationTerm
     REAL(DP) :: boundaryInPlaneVector1(3),boundaryInPlaneVector2(3),boundaryNormal(3),tempVector(3)
     !REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
     REAL(DP) :: boundaryValue,normalDifference,normalTolerance,boundaryPressure
@@ -11791,19 +11791,29 @@ CONTAINS
                unitNormal=0.0_DP
             END IF
 
+            ni=0
+            DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+              IF (componentIdx2/=normalComponentIdx) THEN
+                ni=ni+1
+                DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                  tangentProjection(ni,componentIdx)=DOT_PRODUCT(pointMetrics%GU(componentIdx2,:),pointMetrics%DX_DXI(componentIdx,:))
+                END DO
+              END IF
+            END DO
+
             ! Find in plane boundary vectors
             tempVector(1) = unitNormal(3)
             tempVector(2) = unitNormal(1)
             tempVector(3) = unitNormal(2)
             boundaryInPlaneVector1 = ABS(tempVector/L2NORM(tempVector))
-            !CALL CrossProduct(unitNormal,tempVector,boundaryInPlaneVector1,ERR,ERROR,*999)
-            !boundaryInPlaneVector1 = ABS(boundaryInPlaneVector1/L2NORM(boundaryInPlaneVector1))
+            CALL CrossProduct(unitNormal,tempVector,boundaryInPlaneVector1,ERR,ERROR,*999)
+            boundaryInPlaneVector1 = ABS(boundaryInPlaneVector1/L2NORM(boundaryInPlaneVector1))
             tempVector(1) = unitNormal(2)
             tempVector(2) = unitNormal(3)
             tempVector(3) = unitNormal(1)
             boundaryInPlaneVector2 = ABS(tempVector/L2NORM(tempVector))
-            !CALL CrossProduct(unitNormal,tempVector,boundaryInPlaneVector2,ERR,ERROR,*999)
-            !boundaryInPlaneVector2 = ABS(boundaryInPlaneVector2/L2NORM(boundaryInPlaneVector2))
+            CALL CrossProduct(unitNormal,tempVector,boundaryInPlaneVector2,ERR,ERROR,*999)
+            boundaryInPlaneVector2 = ABS(boundaryInPlaneVector2/L2NORM(boundaryInPlaneVector2))
 
             ! Get the constitutive law (non-Newtonian) viscosity based on shear rate if needed
             IF(equationsSet%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE) THEN
@@ -11926,25 +11936,38 @@ CONTAINS
                               & 0.5_DP*beta*density*phim*phin*stabilisationTerm*jacobianGaussWeights                            
                           END IF
                         ELSE
-                         !  ! Calculate dphin/dXi
-                         !  SUM = 0.0_DP 
-                         !  SUM2 = 0.0_DP 
-                         !  DO mi=1,faceBasis2%NUMBER_OF_XI
-                         !    ! d(u_j)/d(x_i) 
-                         !    SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                         !     & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
-                         !    IF (componentIdx == componentIdx2) THEN
-                         !      ! d(u_i)/d(x_j) 
-                         !      DO ni = 1,faceBasis2%NUMBER_OF_XI
-                         !        SUM2 = SUM2 + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                         !         & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
-                         !      END DO
-                         !    END IF
-                         !  END DO
-                         !  ! viscous terms
-                         ! stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
-                         !  & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
-                         !  & viscosity*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
+                          IF (componentIdx == componentIdx2) THEN 
+                            ! Calculate dphin/dX_j
+                            SUM2 = 0.0_DP
+                            DO mi=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                              SUM = 0.0_DP ! j_th index
+                              DO ni=1,faceBasis2%NUMBER_OF_XI
+                                SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                                  & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
+                              END DO
+                              ! Dot product with normal and tangent terms
+                              SUM2 = SUM2 + SUM*(normalProjection(mi)+tangentProjection(1,mi)+tangentProjection(2,mi))
+                            END DO
+                            ! viscous terms
+                            stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                              & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                              & viscosity*phim*SUM2*jacobianGaussWeights
+
+                            ! !! d(u_j)/d(x_i) 
+                            ! !SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                            ! ! & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
+
+                            !   ! d(u_i)/d(x_j) 
+                            !   DO ni = 1,faceBasis2%NUMBER_OF_XI
+                            !     SUM2 = SUM2 + 
+                            !   END DO
+
+                            !  END DO
+                            ! ! viscous terms
+                            ! stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                            !   & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                            !   & viscosity*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
+                          END IF
                         END IF
                       END DO
                     END DO

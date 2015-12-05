@@ -330,7 +330,7 @@ CONTAINS
         CASE(EQUATIONS_SET_SETUP_INITIAL_TYPE)
           SELECT CASE(EQUATIONS_SET%SUBTYPE)
           CASE(EQUATIONS_SET_STATIC_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_LAPLACE_NAVIER_STOKES_SUBTYPE, &
-            & EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_ALE_NAVIER_STOKES_SUBTYPE, &
+            & EQUATIONS_SET_ALE_NAVIER_STOKES_SUBTYPE, &
             & EQUATIONS_SET_PGM_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_QUASISTATIC_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
             CASE(EQUATIONS_SET_SETUP_START_ACTION)
@@ -392,7 +392,8 @@ CONTAINS
           CASE (EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
              &  EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
              &  EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
-             &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
+             &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE, &
+             &  EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
             CASE(EQUATIONS_SET_SETUP_START_ACTION)
               CALL NAVIER_STOKES_EQUATIONS_SET_SOLUTION_METHOD_SET(EQUATIONS_SET, &
@@ -461,9 +462,9 @@ CONTAINS
                 ! Boundary stabilisation scale factor (beta): default to 0
                 CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
                   & FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,1,0.0_DP,ERR,ERROR,*999)
-                ! Max Courant (CFL) number: default to 1.0
+                ! Max Courant (CFL) number: default to 0.0 (do not use)
                 CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
-                  & FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,2,1.0_DP,ERR,ERROR,*999)
+                  & FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,2,0.0_DP,ERR,ERROR,*999)
                 ! Init Time increment to 0
                 CALL FIELD_COMPONENT_VALUES_INITIALISE(EQUATIONS_SET%EQUATIONS_SET_FIELD%EQUATIONS_SET_FIELD_FIELD, &
                   & FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE,3,0.0_DP,ERR,ERROR,*999)
@@ -493,7 +494,7 @@ CONTAINS
         CASE(EQUATIONS_SET_SETUP_GEOMETRY_TYPE)
           SELECT CASE(EQUATIONS_SET%SUBTYPE)
           CASE(EQUATIONS_SET_STATIC_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_LAPLACE_NAVIER_STOKES_SUBTYPE, &
-            & EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_ALE_NAVIER_STOKES_SUBTYPE, &
+            & EQUATIONS_SET_ALE_NAVIER_STOKES_SUBTYPE, &
             & EQUATIONS_SET_PGM_NAVIER_STOKES_SUBTYPE,EQUATIONS_SET_QUASISTATIC_NAVIER_STOKES_SUBTYPE)
             !Do nothing???
           CASE(EQUATIONS_SET_TRANSIENT1D_NAVIER_STOKES_SUBTYPE, &
@@ -537,6 +538,7 @@ CONTAINS
           CASE (EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
              &  EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
              &  EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
+             &  EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
              &  EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
             CASE(EQUATIONS_SET_SETUP_START_ACTION)
@@ -737,6 +739,7 @@ CONTAINS
                   & DEPENDENT_FIELD_NUMBER_OF_COMPONENTS,ERR,ERROR,*999)
                 IF(EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE .OR. &
                  & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE .OR. &
+                 & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE .OR. &
                  & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE .OR. &
                  & EQUATIONS_SET%SUBTYPE==EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE) THEN
                   CALL FIELD_PARAMETER_SET_CREATE(EQUATIONS_SET%DEPENDENT%DEPENDENT_FIELD,FIELD_U_VARIABLE_TYPE, &
@@ -1410,6 +1413,7 @@ CONTAINS
             END SELECT
           CASE(EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
              & EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+             & EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
              & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE, &
              & EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE)
             SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
@@ -6496,9 +6500,10 @@ CONTAINS
 
                       ! Construct the filename based on the computational node and time step
                       currentLoopIteration=CONTROL_LOOP%TIME_LOOP%ITERATION_NUMBER
-                      WRITE(tempString,"(I4.4)") currentLoopIteration
-                      inputFile = './../interpolatedData/fitData' // tempString(1:4) // '.dat'
-
+                      !WRITE(tempString,"(I4.4)") currentLoopIteration
+                      !inputFile = './../interpolatedData/fitData' // tempString(1:4) // '.dat'
+                      inputFile = './../interpolatedData/fitData' //TRIM(NUMBER_TO_VSTRING(currentLoopIteration, &
+                        & "*",ERR,ERROR)) // '.dat'
                       INQUIRE(FILE=inputFile, EXIST=importDataFromFile)
                       IF(importDataFromFile) THEN
                         !Read fitted data from input file (if exists)
@@ -7271,8 +7276,9 @@ CONTAINS
 
                               ! Construct the filename based on the computational node and time step
                               currentLoopIteration=CONTROL_LOOP%TIME_LOOP%ITERATION_NUMBER
-                              WRITE(tempString,"(I4.4)") currentLoopIteration
-                              inputFile = './../interpolatedData/fitData' // tempString(1:4) // '.dat'
+                              !WRITE(tempString,"(I4.4)") currentLoopIteration
+                              inputFile = './../interpolatedData/fitData' //TRIM(NUMBER_TO_VSTRING(currentLoopIteration, &
+                               & "*",ERR,ERROR)) // '.dat'
 
                               INQUIRE(FILE=inputFile, EXIST=importDataFromFile)
                               IF(importDataFromFile) THEN
@@ -11608,7 +11614,7 @@ CONTAINS
     !REAL(DP) :: traction(3),correction1D_1(3),correction1D_2(3),correction1D_3(3),correct1D(3,3)
     REAL(DP) :: boundaryValue,normalDifference,normalTolerance,boundaryPressure
     REAL(DP) :: phim,phin,SUM,SUM2
-    REAL(DP) :: dXiDX(3,3) !,dUDXi(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
+    REAL(DP) :: dXiDX(3,3),dPhinDXi(3)!,dUDXi(3,3),gradU(3,3),cauchy(3,3),cauchy2(3,3),cauchy3(3,3)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     LOGICAL :: integratedBoundary
 
@@ -11673,6 +11679,7 @@ CONTAINS
     SELECT CASE(equationsSet%SUBTYPE)
     CASE(EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
        & EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+       & EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
        & EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
        & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE)
 
@@ -11823,28 +11830,6 @@ CONTAINS
               viscosity=viscosity*muScale
             END IF
             
-            ! Stabilisation term to correct for possible retrograde flow divergence.
-            ! See: Moghadam et al 2011 “A comparison of outlet boundary treatments for prevention of backflow divergence..." and
-            !      Ismail et al 2014 "A stable approach for coupling multidimensional cardiovascular and pulmonary networks..."
-            ! Note: beta is a relative scaling factor 0 <= beta <= 1; default 1.0
-            stabilisationTerm = 0.0_DP
-            normalDifference=L2NORM(boundaryNormal-unitNormal)
-            normalTolerance=0.1_DP
-            IF(normalDifference < normalTolerance) THEN
-              !normalFlow = DOT_PRODUCT(velocity,normalProjection)
-              normalFlow = DOT_PRODUCT(velocity,unitNormal)
-              IF(normalFlow < -ZERO_TOLERANCE) THEN
-                stabilisationTerm = normalFlow - ABS(normalFlow)
-                ! DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                !   stabilisationTerm(componentIdx) = 0.5_DP*beta*density*velocity(componentIdx)*(normalFlow - ABS(normalFlow))
-                ! END DO
-              ELSE
-                stabilisationTerm = 0.0_DP
-              END IF
-            ELSE
-              ! Not the correct boundary face - go to next face
-              EXIT
-            END IF
 
             ! Keep this here for now: not using for Pressure BC but may want for traction BC
             ! Interpolate current solution velocity/pressure field values
@@ -11868,6 +11853,29 @@ CONTAINS
             dXiDX=0.0_DP
             dXiDX=pointMetrics%DXI_DX(:,:)
             !CALL MATRIX_PRODUCT(dUDXi,dXiDX,gradU,err,error,*999)
+
+            ! Stabilisation term to correct for possible retrograde flow divergence.
+            ! See: Moghadam et al 2011 “A comparison of outlet boundary treatments for prevention of backflow divergence..." and
+            !      Ismail et al 2014 "A stable approach for coupling multidimensional cardiovascular and pulmonary networks..."
+            ! Note: beta is a relative scaling factor 0 <= beta <= 1; default 1.0
+            stabilisationTerm = 0.0_DP
+            normalDifference=L2NORM(boundaryNormal-unitNormal)
+            normalTolerance=0.1_DP
+            IF(normalDifference < normalTolerance) THEN
+              normalFlow = DOT_PRODUCT(velocity,normalProjection)
+              !normalFlow = DOT_PRODUCT(velocity,unitNormal)
+              IF(normalFlow < -ZERO_TOLERANCE) THEN
+                stabilisationTerm = normalFlow - ABS(normalFlow)
+                ! DO componentIdx=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                !   stabilisationTerm(componentIdx) = 0.5_DP*beta*density*velocity(componentIdx)*(normalFlow - ABS(normalFlow))
+                ! END DO
+              ELSE
+                stabilisationTerm = 0.0_DP
+              END IF
+            ELSE
+              ! Not the correct boundary face - go to next face
+              EXIT
+            END IF
 
             ! Check for Neumann integrated boundary types rather than fixe pressure types
             IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
@@ -11902,76 +11910,49 @@ CONTAINS
                   phim = faceQuadratureScheme1%GAUSS_BASIS_FNS(faceParameterIdx,NO_PART_DERIV,gaussIdx)
 
                   IF (.NOT. jacobianFlag) THEN
-                    ! RHS contribution is integrated pressure term
-                    rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) - &
-                     &  pressure*normalProjection(componentIdx)*phim*jacobianGaussWeights
+                    IF (boundaryType==BOUNDARY_CONDITION_PRESSURE .OR. &
+                      & boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS) THEN
+                      ! RHS contribution is integrated pressure term
+                      rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) - &
+                       &  pressure*normalProjection(componentIdx)*phim*jacobianGaussWeights
+                    END IF
                     ! nonlinear contribution is boundary stabilisation (if necessary )
                     IF (beta > ZERO_TOLERANCE) THEN
                       nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)=nonlinearMatrices%ELEMENT_RESIDUAL%VECTOR(elementDof)-&
                         & 0.5_DP*beta*density*phim*velocity(componentIdx)*stabilisationTerm*jacobianGaussWeights
                     END IF
-                  END IF
-
-                  ! Stiffness matrix term is viscous boundary term (can be considered negligible in some cases)
                   ! Jacobian matrix term is the derivative of the nonlinear stabilisation term
                   !Loop over field components
-                  DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                    !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
-                    elementBaseDofIdx2=dependentBasis2%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx2-1)
-                    DO faceNodeIdx2=1,faceBasis2%NUMBER_OF_NODES
-                      elementNodeIdx2=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx2,faceIdx)
-                      DO faceNodeDerivativeIdx2=1,faceBasis2%NUMBER_OF_DERIVATIVES(faceNodeIdx2)
-                        nodeDerivativeIdx2=dependentBasis2%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx2, &
-                         & faceNodeIdx2,faceIdx)
-                        elementParameterIdx2=dependentBasis2%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx2,elementNodeIdx2)
-                        faceParameterIdx2=faceBasis2%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx2,faceNodeIdx2)
-                        elementDof2=elementBaseDofIdx2+elementParameterIdx2
-                        phin = faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2,NO_PART_DERIV,gaussIdx)
-                        ! Jacobian term
-                        IF (jacobianFlag) THEN
-                          IF (componentIdx == componentIdx2) THEN
-                            ! note that (u_j.n_j - |u_j.n_j|) term derivative will be zero
-                            jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2)= &
-                              & jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2) - &
-                              & 0.5_DP*beta*density*phim*phin*stabilisationTerm*jacobianGaussWeights                            
-                          END IF
-                        ELSE
-                          IF (componentIdx == componentIdx2) THEN 
-                            ! Calculate dphin/dX_j
-                            SUM2 = 0.0_DP
-                            DO mi=1,dependentVariable%NUMBER_OF_COMPONENTS-1
-                              SUM = 0.0_DP ! j_th index
-                              DO ni=1,faceBasis2%NUMBER_OF_XI
-                                SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                                  & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
-                              END DO
-                              ! Dot product with normal and tangent terms
-                              SUM2 = SUM2 + SUM*(normalProjection(mi)+tangentProjection(1,mi)+tangentProjection(2,mi))
+                  ELSE
+                    IF (beta > ZERO_TOLERANCE) THEN
+                      DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                        !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
+                        elementBaseDofIdx2=dependentBasis2%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx2-1)
+                        DO faceNodeIdx2=1,faceBasis2%NUMBER_OF_NODES
+                          elementNodeIdx2=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx2,faceIdx)
+                          DO faceNodeDerivativeIdx2=1,faceBasis2%NUMBER_OF_DERIVATIVES(faceNodeIdx2)
+                            nodeDerivativeIdx2=dependentBasis2%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx2, &
+                             & faceNodeIdx2,faceIdx)
+                            elementParameterIdx2=dependentBasis2%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx2,elementNodeIdx2)
+                            faceParameterIdx2=faceBasis2%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx2,faceNodeIdx2)
+                            elementDof2=elementBaseDofIdx2+elementParameterIdx2
+                            phin = faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2,NO_PART_DERIV,gaussIdx)
+                            DO ni=1,faceBasis2%NUMBER_OF_XI
+                              dPhinDXi(ni) = faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                                & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)
                             END DO
-                            ! viscous terms
-                            stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
-                              & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
-                              & viscosity*phim*SUM2*jacobianGaussWeights
-
-                            ! !! d(u_j)/d(x_i) 
-                            ! !SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
-                            ! ! & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
-
-                            !   ! d(u_i)/d(x_j) 
-                            !   DO ni = 1,faceBasis2%NUMBER_OF_XI
-                            !     SUM2 = SUM2 + 
-                            !   END DO
-
-                            !  END DO
-                            ! ! viscous terms
-                            ! stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
-                            !   & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
-                            !   & viscosity*normalProjection(componentIdx2)*phim*(SUM+SUM2)*jacobianGaussWeights
-                          END IF
-                        END IF
+                            ! Jacobian term
+                            IF (componentIdx == componentIdx2) THEN
+                              ! note that (u_j.n_j - |u_j.n_j|) term derivative will be zero
+                              jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2)= &
+                                & jacobianMatrix%ELEMENT_JACOBIAN%MATRIX(elementDof,elementDof2) - &
+                                & 0.5_DP*beta*density*phim*phin*stabilisationTerm*jacobianGaussWeights                            
+                            END IF
+                          END DO
+                        END DO
                       END DO
-                    END DO
-                  END DO
+                    END IF
+                  END IF
                         
                 END DO !nodeDerivativeIdx
               END DO !faceNodeIdx
@@ -12093,6 +12074,7 @@ CONTAINS
     CASE(EQUATIONS_SET_MULTISCALE3D_NAVIER_STOKES_SUBTYPE, &
       & EQUATIONS_SET_CONSTITUTIVE_MU_NAVIER_STOKES_SUBTYPE, &
       & EQUATIONS_SET_STATIC_RBS_NAVIER_STOKES_SUBTYPE, &
+      & EQUATIONS_SET_TRANSIENT_NAVIER_STOKES_SUBTYPE, &
       & EQUATIONS_SET_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
 
       ! Get 3D field pointers

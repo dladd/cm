@@ -11913,7 +11913,7 @@ CONTAINS
                     IF (boundaryType==BOUNDARY_CONDITION_PRESSURE .OR. &
                       & boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS) THEN
                       ! RHS contribution is integrated pressure term
-                      rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) - &
+                      rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
                        &  pressure*normalProjection(componentIdx)*phim*jacobianGaussWeights
                     END IF
                     ! nonlinear contribution is boundary stabilisation (if necessary )
@@ -13701,7 +13701,10 @@ CONTAINS
           IF(ASSOCIATED(navierStokesSolver)) THEN
             NULLIFY(coupledEquationsSet)
             equationsSet=>navierStokesSolver%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
-            CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+            dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
+            IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
+              CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+            END IF
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(navierStokesSolver,err,error,*999)
           ELSE
             CALL FLAG_ERROR("Navier-Stokes solver not associated.",ERR,ERROR,*999)
@@ -13819,7 +13822,10 @@ CONTAINS
                           iteration = subloop%WHILE_LOOP%ITERATION_NUMBER
                         END IF ! check for futher subloops
                       END DO ! subloopIdx
-                      CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+                      dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
+                      IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
+                        CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+                      END IF
                     CASE DEFAULT  
                       localError="Equations set subtype "//TRIM(NUMBER_TO_VSTRING(equationsSet%SUBTYPE,"*",err,error))// &
                         & " is not valid for a dynamic solver in a simple loop for a multiscale Navier-Stokes problem."

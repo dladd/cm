@@ -1379,6 +1379,13 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSControlLoop_AbsoluteToleranceSetObj
   END INTERFACE !CMISSControlLoop_AbsoluteToleranceSet
 
+  !>Sets/changes the absolute convergence tolerance2 for a while control loop. \todo need a get method
+  INTERFACE CMISSControlLoop_AbsoluteTolerance2Set
+    MODULE PROCEDURE CMISSControlLoop_AbsoluteTolerance2SetNumber0
+    MODULE PROCEDURE CMISSControlLoop_AbsoluteTolerance2SetNumber1
+    MODULE PROCEDURE CMISSControlLoop_AbsoluteTolerance2SetObj
+  END INTERFACE !CMISSControlLoop_AbsoluteTolerance2Set
+
   !>Sets/changes the relative convergence tolerance for a while control loop. \todo need a get method
   INTERFACE CMISSControlLoop_RelativeToleranceSet
     MODULE PROCEDURE CMISSControlLoop_RelativeToleranceSetNumber0
@@ -1465,7 +1472,7 @@ MODULE OPENCMISS
 
   PUBLIC CMISSControlLoop_MaximumIterationsSet
 
-  PUBLIC CMISSControlLoop_AbsoluteToleranceSet,CMISSControlLoop_RelativeToleranceSet
+  PUBLIC CMISSControlLoop_AbsoluteToleranceSet,CMISSControlLoop_RelativeToleranceSet,CMISSControlLoop_AbsoluteTolerance2Set
 
   PUBLIC CMISSControlLoop_NumberOfSubLoopsGet,CMISSControlLoop_NumberOfSubLoopsSet
 
@@ -16624,6 +16631,111 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSControlLoop_AbsoluteToleranceSetObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the absolute tolerance2 for a while control loop identified by user numbers.
+  SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetNumber0(problemUserNumber,controlLoopIdentifier,absoluteTolerance2,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the absolute tolerance2 for.
+    INTEGER(INTG), INTENT(IN) :: controlLoopIdentifier !<The control loop identifier.
+    REAL(DP), INTENT(IN) :: absoluteTolerance2 !<The absolute tolerance2 value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(CONTROL_LOOP_TYPE), POINTER :: CONTROL_LOOP
+    TYPE(PROBLEM_TYPE), POINTER :: PROBLEM
+    TYPE(VARYING_STRING) :: LOCAL_ERROR
+
+    CALL ENTERS("CMISSControlLoop_AbsoluteTolerance2SetNumber0",err,error,*999)
+
+    NULLIFY(CONTROL_LOOP)
+    NULLIFY(PROBLEM)
+    CALL PROBLEM_USER_NUMBER_FIND(problemUserNumber,PROBLEM,err,error,*999)
+    IF(ASSOCIATED(PROBLEM)) THEN
+      CALL PROBLEM_CONTROL_LOOP_GET(PROBLEM,controlLoopIdentifier,CONTROL_LOOP,err,error,*999)
+      CALL ControlLoop_AbsoluteTolerance2Set(CONTROL_LOOP,absoluteTolerance2,err,error,*999)
+    ELSE
+      LOCAL_ERROR="A problem with an user number of "//TRIM(NUMBER_TO_VSTRING(problemUserNumber,"*",err,error))//" does not exist."
+      CALL FLAG_ERROR(LOCAL_ERROR,err,error,*999)
+    END IF
+
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetNumber0")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_AbsoluteTolerance2SetNumber0",err,error)
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetNumber0")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetNumber0
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the absolute tolerance2 for a while control loop identified by user numbers.
+  SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetNumber1(problemUserNumber,controlLoopIdentifiers,absoluteTolerance2,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: problemUserNumber !<The user number of the problem to set the absolute tolerance2 for.
+    INTEGER(INTG), INTENT(IN) :: controlLoopIdentifiers(:) !<The control loop identifiers.
+    REAL(DP), INTENT(IN) :: absoluteTolerance2 !<The absolute tolerance2 value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(CONTROL_LOOP_TYPE), POINTER :: CONTROL_LOOP
+    TYPE(PROBLEM_TYPE), POINTER :: PROBLEM
+    TYPE(VARYING_STRING) :: LOCAL_ERROR
+
+    CALL ENTERS("CMISSControlLoop_AbsoluteTolerance2SetNumber1",err,error,*999)
+
+    NULLIFY(CONTROL_LOOP)
+    NULLIFY(PROBLEM)
+    CALL PROBLEM_USER_NUMBER_FIND(problemUserNumber,PROBLEM,err,error,*999)
+    IF(ASSOCIATED(PROBLEM)) THEN
+      CALL PROBLEM_CONTROL_LOOP_GET(PROBLEM,controlLoopIdentifiers,CONTROL_LOOP,err,error,*999)
+      CALL ControlLoop_AbsoluteTolerance2Set(CONTROL_LOOP,absoluteTolerance2,err,error,*999)
+    ELSE
+      LOCAL_ERROR="A problem with an user number of "//TRIM(NUMBER_TO_VSTRING(problemUserNumber,"*",err,error))//" does not exist."
+      CALL FLAG_ERROR(LOCAL_ERROR,err,error,*999)
+    END IF
+
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetNumber1")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_AbsoluteTolerance2SetNumber1",err,error)
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetNumber1")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetNumber1
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the absolute tolerance2 for a while control loop identified by an object.
+  SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetObj(controlLoop,absoluteTolerance2,err)
+
+    !Argument variables
+    TYPE(CMISSControlLoopType), INTENT(INOUT) :: controlLoop !<The control loop to set the absolute tolerance2 for.
+    REAL(DP), INTENT(IN) :: absoluteTolerance2 !<The absolute tolerance2 value for a control loop.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+
+    CALL ENTERS("CMISSControlLoop_AbsoluteTolerance2SetObj",err,error,*999)
+
+    CALL ControlLoop_AbsoluteTolerance2Set(controlLoop%CONTROL_LOOP,absoluteTolerance2,err,error,*999)
+
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetObj")
+    RETURN
+999 CALL ERRORS("CMISSControlLoop_AbsoluteTolerance2SetObj",err,error)
+    CALL EXITS("CMISSControlLoop_AbsoluteTolerance2SetObj")
+    CALL CMISS_HANDLE_ERROR(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSControlLoop_AbsoluteTolerance2SetObj
+
 
   !
   !================================================================================================================================

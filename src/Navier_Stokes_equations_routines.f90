@@ -3349,15 +3349,16 @@ CONTAINS
                   CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(CONTROL_LOOP,1,ERR,ERROR,*999)
                   CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)                
                   CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop,1000,ERR,ERROR,*999)
-                  CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop,0.1_DP,err,error,*999)
+                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop,50,ERR,ERROR,*999)
+                  CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop,0.001_DP,err,error,*999)
+                  CALL ControlLoop_AbsoluteTolerance2Set(iterativeWhileLoop,0.1_DP,err,error,*999)
                   CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop,"3D-1D Iterative Loop",ERR,ERROR,*999)
                   CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop,2,ERR,ERROR,*999)
                   NULLIFY(iterativeWhileLoop2)
                   ! The 1D-0D boundary value iterative coupling loop
                   CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)                
                   CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop2,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop2,1000,ERR,ERROR,*999)
+                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop2,100,ERR,ERROR,*999)
                   CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop2,0.1_DP,err,error,*999)
                   CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop2,"1D-0D Iterative Coupling Convergence Loop",ERR,ERROR,*999)
                   CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop2,2,ERR,ERROR,*999)
@@ -12013,7 +12014,7 @@ CONTAINS
 
             ! Check for Neumann integrated boundary types rather than fixe pressure types
             IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
-             & boundaryType==BOUNDARY_CONDITION_PRESSURE) THEN
+              & boundaryType==BOUNDARY_CONDITION_PRESSURE) THEN
               !Get the pressure value interpolation parameters
               pressureInterpolationParameters=>equations%INTERPOLATION%DEPENDENT_INTERP_PARAMETERS( &
                & FIELD_U_VARIABLE_TYPE)%PTR
@@ -12087,6 +12088,57 @@ CONTAINS
                       END DO
                     END IF
                   END IF
+
+                  ! IF (boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS) THEN
+                  !   ! Stiffness matrix term is viscous boundary term (can be considered negligible in some cases)
+                  !   !Loop over field components
+                  !   DO componentIdx2=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                  !     !Work out the first index of the rhs vector for this element - (i.e. the number of previous)
+                  !     elementBaseDofIdx2=dependentBasis2%NUMBER_OF_ELEMENT_PARAMETERS*(componentIdx2-1)
+                  !     DO faceNodeIdx2=1,faceBasis2%NUMBER_OF_NODES
+                  !       elementNodeIdx2=dependentBasis2%NODE_NUMBERS_IN_LOCAL_FACE(faceNodeIdx2,faceIdx)
+                  !       DO faceNodeDerivativeIdx2=1,faceBasis2%NUMBER_OF_DERIVATIVES(faceNodeIdx2)
+                  !         nodeDerivativeIdx2=dependentBasis2%DERIVATIVE_NUMBERS_IN_LOCAL_FACE(faceNodeDerivativeIdx2, &
+                  !          & faceNodeIdx2,faceIdx)
+                  !         elementParameterIdx2=dependentBasis2%ELEMENT_PARAMETER_INDEX(nodeDerivativeIdx2,elementNodeIdx2)
+                  !         faceParameterIdx2=faceBasis2%ELEMENT_PARAMETER_INDEX(faceNodeDerivativeIdx2,faceNodeIdx2)
+                  !         elementDof2=elementBaseDofIdx2+elementParameterIdx2
+                  !         phin = faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2,NO_PART_DERIV,gaussIdx)
+                  !         IF (componentIdx == componentIdx2) THEN 
+                  !           ! Calculate dphin/dX_j
+                  !           SUM2 = 0.0_DP
+                  !           DO mi=1,dependentVariable%NUMBER_OF_COMPONENTS-1
+                  !             SUM = 0.0_DP ! j_th index
+                  !             DO ni=1,faceBasis2%NUMBER_OF_XI
+                  !               SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                  !                 & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(ni),gaussIdx)*dXiDX(ni,mi)
+                  !             END DO
+                  !             ! Dot product with normal and tangent terms
+                  !             SUM2 = SUM2 + SUM*(tangentProjection(1,mi)+tangentProjection(2,mi))
+                  !           END DO
+                  !           ! viscous terms
+                  !           stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                  !             & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                  !             & viscosity*phim*SUM2*jacobianGaussWeights
+
+                  !           ! !! d(u_j)/d(x_i) 
+                  !           ! !SUM = SUM + faceQuadratureScheme2%GAUSS_BASIS_FNS(faceParameterIdx2, &
+                  !           ! ! & PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(mi),gaussIdx)*dXiDX(mi,componentIdx)
+
+                  !           !   ! d(u_i)/d(x_j) 
+                  !           !   DO ni = 1,faceBasis2%NUMBER_OF_XI
+                  !           !     SUM2 = SUM2 + 
+                  !           !   END DO
+
+                  !           !  END DO
+                  !           ! ! viscous terms
+                  !           ! stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) =  &
+                  !           !   & stiffnessMatrix%ELEMENT_MATRIX%MATRIX(elementDof,elementDof2) + &
+                  !         END IF
+                  !       END DO
+                  !     END DO
+                  !   END DO
+                  ! END IF
                         
                 END DO !nodeDerivativeIdx
               END DO !faceNodeIdx
@@ -12115,11 +12167,12 @@ CONTAINS
   !
 
   !> Calculate the fluid flux through 3D boundaries for use in problems with coupled solutions (e.g. multidomain)
-  SUBROUTINE NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,err,error,*)
+  SUBROUTINE NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet !<A pointer to the equations set
     TYPE(EQUATIONS_SET_TYPE), POINTER :: coupledEquationsSet !<A pointer to the coupled equations set (for 3D-1D coupling)
+    INTEGER(INTG), INTENT(IN) :: iteration3D1D !<iteration number for the 3D-1D loop if this is a coupled problem
     INTEGER(INTG), INTENT(OUT) :: err !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
     !Local Variables
@@ -12166,7 +12219,7 @@ CONTAINS
     REAL(DP) :: localBoundaryFlux(10),localBoundaryArea(10),globalBoundaryFlux(10),globalBoundaryArea(10)
     REAL(DP) :: localBoundaryPressure(10),globalBoundaryPressure(10),globalBoundaryMeanPressure(10)
     REAL(DP) :: localBoundaryNormalStress(10),globalBoundaryNormalStress(10),globalBoundaryMeanNormalStress(10)
-    REAL(DP) :: couplingFlow,couplingStress,p1D,q1D,a1D,p3D
+    REAL(DP) :: couplingFlow,couplingStress,p1D,q1D,a1D,p3D,stress3DPrevious,stress1DPrevious,tolerance
     LOGICAL :: couple1DTo3D,couple3DTo1D
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
@@ -12645,14 +12698,31 @@ CONTAINS
             CALL FIELD_PARAMETER_SET_GET_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
               & 1,1,coupledNodeNumber,1,p1D,err,error,*999)
             ! DEBUG
+            CALL Field_ParameterSetEnsureCreated(dependentField1D,FIELD_U2_VARIABLE_TYPE, &
+              & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,ERR,ERROR,*999)
+            CALL FIELD_PARAMETER_SET_GET_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+              & 1,1,coupledNodeNumber,2,stress1DPrevious,err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_CONSTANT(equationsSet%MATERIALS%MATERIALS_FIELD,FIELD_U_VARIABLE_TYPE, &
               & FIELD_VALUES_SET_TYPE,2,rho,err,error,*999)
             ! Convert 1D flow and pressure to coupling stress and flow
             !p3D = p1D! + rho/2.0_DP*ABS(q1D/a1D)**2.0_DP
             ! CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"1D boundary ",boundaryID,"  pressure:  ", &
             !   & p1D,err,error,*999)
-            couplingStress = p1D
-            couplingFlow = -normal*q1D
+            couplingStress = -p1D
+            couplingFlow = q1D
+            p3D = couplingStress
+            ! ! TODO: need to be able to set this elsewhere!
+            ! tolerance = 1.0E-8_DP
+            ! ! 1D pressure solution converged but 3D stress is off a bit since we are applying as an average
+            ! IF (iteration3D1D > 1 .AND. ABS(couplingStress-stress1DPrevious) < tolerance) THEN
+            !   CALL Field_ParameterSetEnsureCreated(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+            !     & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,ERR,ERROR,*999)
+            !   CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+            !     & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,1,1,coupledNodeNumber,2,stress3DPrevious,err,error,*999)
+            !   ! increment p-applied as the difference between 1D and 3D
+            !   p3D = p3D + (couplingStress - stress3DPrevious)/2.0_DP
+            ! END IF
+            !couplingFlow = -normal*q1D
             ! Update the coupling flow and stress values from the 3D equations set to the coupled 1D field
             CALL FIELD_PARAMETER_SET_UPDATE_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
               & 1,1,coupledNodeNumber,2,couplingStress,err,error,*999)
@@ -12722,7 +12792,7 @@ CONTAINS
                   !CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField3D,FIELD_U_VARIABLE_TYPE, &
                   !  & FIELD_VALUES_SET_TYPE,1,1,nodeNumber,4,p3D,err,error,*999)
                   CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField3D,FIELD_U_VARIABLE_TYPE, &
-                    & FIELD_PRESSURE_VALUES_SET_TYPE,1,1,nodeNumber,4,couplingStress,err,error,*999)
+                    & FIELD_PRESSURE_VALUES_SET_TYPE,1,1,nodeNumber,4,p3D,err,error,*999)
                 ELSE IF(boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) THEN
                   LOCAL_ERROR="Coupling flow boundary type not yet implemented for 3D side of coupled 3D-1D problems."
                   CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)                         
@@ -12788,13 +12858,16 @@ CONTAINS
     TYPE(SOLVER_TYPE), POINTER :: solver1D
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: fieldVariable
     TYPE(DOMAIN_NODES_TYPE), POINTER :: domainNodes
+    TYPE(BOUNDARY_CONDITIONS_TYPE), POINTER :: boundaryConditions
+    TYPE(BOUNDARY_CONDITIONS_VARIABLE_TYPE), POINTER :: boundaryConditionsVariable
     TYPE(VARYING_STRING) :: localError
     INTEGER(INTG) :: nodeNumber,nodeIdx,derivativeIdx,versionIdx,componentIdx,numberOfLocalNodes1D
     INTEGER(INTG) :: solver1dNavierStokesNumber,solverNumber,MPI_IERROR,timestep,iteration
     INTEGER(INTG) :: boundaryNumber,numberOfBoundaries,numberOfComputationalNodes
+    INTEGER(INTG) :: dependentDof,boundaryConditionType
     REAL(DP) :: A0_PARAM,E_PARAM,H_PARAM,beta,pCellML,normalWave(2)
     REAL(DP) :: qPrevious,pPrevious,aPrevious,q1d,a1d,qError,aError,couplingTolerance
-    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,MPI_LOGICAL
+    LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,MPI_LOGICAL,coupled1D0DBoundary
     LOGICAL, ALLOCATABLE :: globalConverged(:)
 
     CALL ENTERS("NavierStokes_Couple1D0D",ERR,ERROR,*999)
@@ -12894,13 +12967,27 @@ CONTAINS
         & TOPOLOGY%NODES%NODES(nodeNumber)%BOUNDARY_NODE
 
       !Get node characteristic wave direction (specifies inlet/outlet)
+      coupled1D0DBoundary = .FALSE.
       DO componentIdx=1,2
         CALL Field_ParameterSetGetLocalNode(independentField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, & 
          & versionIdx,derivativeIdx,nodeNumber,componentIdx,normalWave(componentIdx),err,error,*999)
+
+        ! Check that this is a 1D-0D boundary
+        NULLIFY(fieldVariable)
+        CALL FIELD_VARIABLE_GET(dependentField,FIELD_U_VARIABLE_TYPE,fieldVariable,ERR,ERROR,*999)
+        dependentDof = fieldVariable%COMPONENTS(componentIdx)%PARAM_TO_DOF_MAP% &
+          & NODE_PARAM2DOF_MAP%NODES(nodeNumber)%DERIVATIVES(derivativeIdx)%VERSIONS(versionIdx)
+        boundaryConditions=>solver1D%SOLVER_EQUATIONS%BOUNDARY_CONDITIONS
+        CALL BOUNDARY_CONDITIONS_VARIABLE_GET(boundaryConditions,fieldVariable, &
+          & boundaryConditionsVariable,err,error,*999)
+        boundaryConditionType=boundaryConditionsVariable%CONDITION_TYPES(dependentDof)
+        IF (boundaryConditionType == BOUNDARY_CONDITION_FIXED_CELLML) THEN
+          coupled1D0DBoundary = .TRUE.
+        END IF
       END DO
 
       !!!-- F i n d   B o u n d a r y   N o d e s --!!!
-      IF(ABS(normalWave(1))>ZERO_TOLERANCE .AND. boundaryNode) THEN
+      IF(ABS(normalWave(1))>ZERO_TOLERANCE .AND. boundaryNode .AND. coupled1D0DBoundary) THEN
 
         boundaryNumber = boundaryNumber + 1
         boundaryConverged(boundaryNumber) = .FALSE.
@@ -13060,7 +13147,8 @@ CONTAINS
     INTEGER(INTG) :: solver3dNavierStokesNumber,userNodeNumber,localDof,globalDof,computationalNode
     REAL(DP) :: normalWave(2)
     REAL(DP) :: flow1D,stress1D,flow1DPrevious,stress1DPrevious,flow3D,stress3D,flowError,stressError
-    REAL(DP) :: maxStressError,maxFlowError,flowTolerance,stressTolerance,absoluteCouplingTolerance,relativeCouplingTolerance
+    REAL(DP) :: maxStressError,maxFlowError,flowTolerance,stressTolerance,absoluteCouplingTolerance
+    REAL(DP) :: absoluteCouplingTolerance2,relativeCouplingTolerance
     LOGICAL :: boundaryNode,boundaryConverged(30),localConverged,globalConverged
 
     CALL ENTERS("NavierStokes_Couple3D1D",ERR,ERROR,*999)
@@ -13072,7 +13160,8 @@ CONTAINS
       iteration = iterativeLoop%ITERATION_NUMBER
       timestep = controlLoop%PARENT_LOOP%TIME_LOOP%ITERATION_NUMBER
       absoluteCouplingTolerance = iterativeLoop%ABSOLUTE_TOLERANCE
-      relativeCouplingTolerance = iterativeLoop%ABSOLUTE_TOLERANCE
+      absoluteCouplingTolerance2 = iterativeLoop%ABSOLUTE_TOLERANCE2
+      relativeCouplingTolerance = iterativeLoop%RELATIVE_TOLERANCE
       IF(.NOT. ASSOCIATED(iterativeLoop)) THEN
         localError="Iterative loop is not associated for 3D-1D fluid coupling."
         CALL FLAG_ERROR(localError,ERR,ERROR,*999)
@@ -13184,13 +13273,15 @@ CONTAINS
 
         boundaryNumber = boundaryNumber + 1
         boundaryConverged(boundaryNumber) = .FALSE.
+        CALL Field_ParameterSetEnsureCreated(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+          & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,err,error,*999)
         CALL Field_ParameterSetEnsureCreated(dependentField1D,FIELD_U2_VARIABLE_TYPE, &
           & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,err,error,*999)
-        !Get 1D flow and stress from previous iteration
-        CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
-          & versionIdx,derivativeIdx,nodeNumber,2,stress1DPrevious,err,error,*999)  
-        CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
-          & versionIdx,derivativeIdx,nodeNumber,3,flow1DPrevious,err,error,*999)  
+        ! !Get 1D flow and stress from previous iteration
+        ! CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+        !   & versionIdx,derivativeIdx,nodeNumber,2,stress1DPrevious,err,error,*999)  
+        ! CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+        !   & versionIdx,derivativeIdx,nodeNumber,3,flow1DPrevious,err,error,*999)  
         !Get 1D flow and stress from current iteration
         CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
           & versionIdx,derivativeIdx,nodeNumber,2,stress1D,err,error,*999)  
@@ -13201,6 +13292,14 @@ CONTAINS
           & versionIdx,derivativeIdx,nodeNumber,1,flow3D,err,error,*999)  
         CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
           & versionIdx,derivativeIdx,nodeNumber,2,stress3D,err,error,*999)  
+        IF (boundaryNumber ==1) THEN
+          CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"------3D-1D----- iteration:  ",iteration,err,error,*999)
+        END IF
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  node:  ",userNodeNumber,err,error,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"    1D flow:  ",flow1D,err,error,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"    3D flow:  ",flow3D,err,error,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"    1D stress: ",stress1D,err,error,*999)
+        CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"    3D stress: ",stress3D,err,error,*999)
 
         ! C h e c k  3 D / 1 D   C o n v e r g e n c e   f o r   t h i s   n o d e
         ! -------------------------------------------------------------------------
@@ -13209,16 +13308,21 @@ CONTAINS
         stressError = stress1D - stress3D
         flowTolerance = ABS(relativeCouplingTolerance*flow3D)
         stressTolerance = ABS(relativeCouplingTolerance*stress1D)
+
         !DEBUG check if within 1%- maybe set up a relative tolerance?
         IF(ABS(flowError) < flowTolerance .AND. ABS(stressError) < stressTolerance) THEN
           boundaryConverged(boundaryNumber) = .TRUE.
-        ELSE IF( ABS(flowError) < absoluteCouplingTolerance .AND. ABS(stressError) < absoluteCouplingTolerance) THEN
+        ELSE IF( ABS(flowError) < absoluteCouplingTolerance .AND. ABS(stressError) < absoluteCouplingTolerance2) THEN
           boundaryConverged(boundaryNumber) = .TRUE.
         END IF
         maxFlowError = MAX(ABS(maxFlowError),ABS(flowError))
         maxStressError = MAX(ABS(maxStressError),ABS(stressError))
 
         ! Set current iteration values to previous
+        CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+         & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,versionIdx,derivativeIdx,nodeNumber,1,flow3D,err,error,*999)
+        CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+         & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,versionIdx,derivativeIdx,nodeNumber,2,stress3D,err,error,*999)          
         CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE, &
          & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,versionIdx,derivativeIdx,nodeNumber,2,stress1D,err,error,*999)          
         CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE, &
@@ -13226,6 +13330,10 @@ CONTAINS
 
       END IF !Find boundary nodes
     END DO !Loop over nodes 
+    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
+    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
+      & err,error,*999)
     CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
       & err,error,*999)
     CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE, &
@@ -13828,7 +13936,7 @@ CONTAINS
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: fieldVariable
     TYPE(VARYING_STRING) :: localError
     INTEGER(INTG) :: numberOfSolvers,solverIdx,solverIdx2,equationsSetIdx,equationsSetIdx2
-    INTEGER(INTG) :: subloopIdx,subloopIdx2,subloopIdx3,iteration
+    INTEGER(INTG) :: subloopIdx,subloopIdx2,subloopIdx3,iteration3D1D
     character(70) :: label
 
     CALL ENTERS("NavierStokes_ControlLoopPostLoop",err,error,*999)
@@ -13857,7 +13965,7 @@ CONTAINS
             equationsSet=>navierStokesSolver%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
             dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
             IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
-              CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+              CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,0,ERR,ERROR,*999)
             END IF
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(navierStokesSolver,err,error,*999)
           ELSE
@@ -13943,6 +14051,8 @@ CONTAINS
                       ! TODO: This is a bit of a hack- make more robust
                       NULLIFY(iterativeWhileLoop2)
                       NULLIFY(iterativeWhileLoop3)
+                      ! 3D-1D iteration
+                      iteration3D1D=controlLoop%PARENT_LOOP%WHILE_LOOP%ITERATION_NUMBER
                       ! 1D-0D
                       iterativeWhileLoop2=>controlLoop%PARENT_LOOP%SUB_LOOPS(1)%PTR                      
                       ! 1D
@@ -14017,7 +14127,7 @@ CONTAINS
                       ! END DO ! subloopIdx
                       dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
                       IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
-                        CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+                        CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,ERR,ERROR,*999)
                       END IF
                     CASE DEFAULT  
                       localError="Equations set subtype "//TRIM(NUMBER_TO_VSTRING(equationsSet%SUBTYPE,"*",err,error))// &
@@ -14115,10 +14225,11 @@ CONTAINS
             IF (controlLoop%WHILE_LOOP%CONTINUE_LOOP==.FALSE.) THEN
               ! TODO: make this more general!
               navierStokesSolver3D=>controlLoop%PARENT_LOOP%SUB_LOOPS(2)%PTR%SOLVERS%SOLVERS(1)%PTR
+              iteration3D1D = controlLoop%PARENT_LOOP%WHILE_LOOP%ITERATION_NUMBER
               IF (ASSOCIATED(navierStokesSolver3D)) THEN
                 equationsSet=>navierStokesSolver1D%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
                 coupledEquationsSet=>navierStokesSolver3D%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
-                CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,ERR,ERROR,*999)
+                CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,ERR,ERROR,*999)
               ELSE
                 CALL FLAG_ERROR("Could not locate 3D solver from 1d-0d subloop",ERR,ERROR,*999)
               END IF

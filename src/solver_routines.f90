@@ -4782,9 +4782,7 @@ CONTAINS
                             IF(ASSOCIATED(DYNAMIC_VARIABLE)) THEN
                               !Set up the parameter sets to hold the required solver parameters
                               !1st degree or higher so set up displacement parameter sets
-                              
-                              
-                              
+
                               IF(DYNAMIC_SOLVER%DEGREE>=SOLVER_DYNAMIC_SECOND_DEGREE) THEN
                                 !2nd degree or higher so set up velocity parameter sets
                                 CALL Field_ParameterSetEnsureCreated(DEPENDENT_FIELD,DYNAMIC_VARIABLE_TYPE, &
@@ -18978,6 +18976,7 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: VARIABLE_TYPE,equations_set_idx,solver_matrix_idx, &
       & residual_variable_idx,variable_idx
+    LOGICAL :: PREV_PREV_CREATED
     TYPE(DYNAMIC_SOLVER_TYPE), POINTER :: DYNAMIC_SOLVER
     TYPE(EQUATIONS_TYPE), POINTER :: EQUATIONS
     TYPE(EQUATIONS_MAPPING_TYPE), POINTER :: EQUATIONS_MAPPING
@@ -19009,6 +19008,12 @@ CONTAINS
                     IF(ASSOCIATED(FIELD_VARIABLE)) THEN
                       VARIABLE_TYPE=FIELD_VARIABLE%VARIABLE_TYPE
                       FIELD=>FIELD_VARIABLE%FIELD
+                      CALL FIELD_PARAMETER_SET_CREATED(FIELD,VARIABLE_TYPE,FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE, &
+                        & PREV_PREV_CREATED,ERR,ERROR,*999)
+                      IF(PREV_PREV_CREATED) THEN
+                        CALL FIELD_PARAMETER_SETS_COPY(FIELD,VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE, &
+                          & FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE,1.0_DP,ERR,ERROR,*999)
+                      ENDIF
                       !Copy the displacements
                       CALL FIELD_PARAMETER_SETS_COPY(FIELD,VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                         & FIELD_PREVIOUS_VALUES_SET_TYPE,1.0_DP,ERR,ERROR,*999)

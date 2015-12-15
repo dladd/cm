@@ -3944,9 +3944,10 @@ CONTAINS
     INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
-    TYPE(SOLVERS_TYPE), POINTER :: SOLVERS !<A pointer the solvers to update the variables from
-    TYPE(SOLVER_TYPE), POINTER :: SOLVER !<A pointer the solver to update the variables from
-    INTEGER(INTG) :: solver_idx
+    TYPE(CONTROL_LOOP_TYPE), POINTER :: controlLoop2 
+    TYPE(SOLVERS_TYPE), POINTER :: SOLVERS 
+    TYPE(SOLVER_TYPE), POINTER :: SOLVER
+    INTEGER(INTG) :: solver_idx,subLoopIdx
 
     NULLIFY(SOLVER)
 
@@ -3969,6 +3970,18 @@ CONTAINS
         ELSE
           CALL FLAG_ERROR("Control loop solvers is not associated.",ERR,ERROR,*999)
         ENDIF
+      ELSE
+        !Find all solvers in loops below this that are not time loops and update variables. Solvers in time loops below will
+        !be dealt with by that time loop.
+        DO subLoopIdx=1,CONTROL_LOOP%NUMBER_OF_SUB_LOOPS
+          controlLoop2=>CONTROL_LOOP%SUB_LOOPS(subLoopIdx)%PTR
+          IF(ASSOCIATED(controlLoop2)) THEN
+            IF(controlLoop2%LOOP_TYPE/=PROBLEM_CONTROL_TIME_LOOP_TYPE) &
+              & CALL PROBLEM_CONTROL_LOOP_PREVIOUS_VALUES_UPDATE(controlLoop2,err,error,*999)
+          ELSE
+            CALL FLAG_ERROR("Control loop 2 is not associated.",err,error,*999)
+          ENDIF
+        ENDDO !numberOfControlLoops
       ENDIF
     ELSE
       CALL FLAG_ERROR("Control loop is not associated.",ERR,ERROR,*999)

@@ -3321,7 +3321,9 @@ MODULE OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_INCREMENTAL_VALUES_SET_TYPE = FIELD_INCREMENTAL_VALUES_SET_TYPE !<The parameter set corresponding to the field incremental values \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_ANALYTIC_VALUES_SET_TYPE = FIELD_ANALYTIC_VALUES_SET_TYPE !<The parameter set corresponding to the analytic field values \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_PREVIOUS_VALUES_SET_TYPE = FIELD_PREVIOUS_VALUES_SET_TYPE !<The parameter set corresponding to the previous field values (at time T) \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
-  INTEGER(INTG), PARAMETER :: CMISS_FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE = FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE !<The parameter set corresponding to the previous previous field values (at time T-DT) \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
+  
+  INTEGER(INTG), PARAMETER :: CMISS_FIELD_SECOND_PREVIOUS_SET_TYPE = FIELD_SECOND_PREVIOUS_SET_TYPE !<The parameter set corresponding to the previous previous field values (at time T-DT) \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
+  
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_MEAN_PREDICTED_DISPLACEMENT_SET_TYPE = FIELD_MEAN_PREDICTED_DISPLACEMENT_SET_TYPE !<The parameter set corresponding to the mean predicited avalues (at time T+DT) \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_VELOCITY_VALUES_SET_TYPE = FIELD_VELOCITY_VALUES_SET_TYPE !<The parameter set corresponding to the velocity values (at time T+DT) \see OPENCMISS_FieldParameterSetTypes,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_FIELD_INITIAL_VELOCITY_SET_TYPE = FIELD_INITIAL_VELOCITY_SET_TYPE !<The parameter set corresponding to the initial velocity values for dynamic problems. This is also the previous velocity values \see OPENCMISS_FieldParameterSetTypes,OPENCMISS

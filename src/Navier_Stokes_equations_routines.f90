@@ -12263,7 +12263,7 @@ CONTAINS
     TYPE(EQUATIONS_SET_EQUATIONS_SET_FIELD_TYPE), POINTER :: equationsEquationsSetField
     TYPE(FIELD_TYPE), POINTER :: equationsSetField3D
     TYPE(FIELD_TYPE), POINTER :: dependentField3D
-    TYPE(FIELD_TYPE), POINTER :: materialField3D
+    TYPE(FIELD_TYPE), POINTER :: materialField1D,materialField3D
     TYPE(FIELD_TYPE), POINTER :: dependentField1D
     TYPE(FIELD_TYPE), POINTER :: independentField1D
     TYPE(EQUATIONS_MATRICES_RHS_TYPE), POINTER :: rhsVector
@@ -12290,10 +12290,10 @@ CONTAINS
       & globalBoundaryMeanPressure(10),globalBoundaryMeanPressureprev(10)
     REAL(DP) :: localBoundaryNormalStress(10),localBoundaryNormalStressprev(10),globalBoundaryNormalStress(10), &
        globalBoundaryNormalStressprev(10),globalBoundaryMeanNormalStress(10),globalBoundaryMeanNormalStressprev(10)
-    REAL(DP) :: couplingFlow,couplingStress,p1D,dP1Ddt,P1Dprev,Q1D,dQ1Ddt,Q1Dprev,a1D,P3D,dP3Ddt,Q3D,dQ3Ddt,d2Q3Ddt2, &
+    REAL(DP) :: couplingFlow,couplingStress,p1D,dP1Ddt,P1Dprev,Q1D,dQ1Ddt,Q1Dprev,a1D,a1Dprev,P3D,dP3Ddt,Q3D,dQ3Ddt,d2Q3Ddt2, &
       & stress3DPrevious,stress1DPrevious,tolerance
-    REAL(DP) :: R1,R2,C,L
-    LOGICAL :: couple1DTo3D,couple3DTo1D
+    REAL(DP) :: R1,R2,C,L,pExternal,beta,A0_PARAM,E_PARAM,H_PARAM
+    LOGICAL :: couple1DTo3D,couple3DTo1D,done
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
     REAL(DP), POINTER :: geometricParameters(:)
@@ -12437,8 +12437,12 @@ CONTAINS
         IF(boundaryID>1) THEN
           faceArea=0.0_DP
           faceVelocity=0.0_DP
+          faceVelocityprev=0.0_DP
+          faceVelocityprevprev=0.0_DP
           facePressure=0.0_DP
+          facePressureprev=0.0_DP
           faceTraction=0.0_DP
+          faceTractionprev=0.0_DP
           !Get the dependent interpolation parameters
           dependentInterpolationParameters=>equations3D%INTERPOLATION%DEPENDENT_INTERP_PARAMETERS( &
             & FIELD_U_VARIABLE_TYPE)%PTR
@@ -12537,10 +12541,12 @@ CONTAINS
                 dUDXi(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
 
                 !Get the time derivative of the pressure and velocity interpolation parameters
-                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE,elementIdx, &
+                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PREVIOUS_VALUES_SET_TYPE,elementIdx, &
                   & dependentInterpolationParameters,ERR,ERROR,*999)
                 CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
                  & dependentInterpolatedPoint,ERR,ERROR,*999)
+                velocityGaussprev=0.0_DP
+                pressureGaussprev=0.0_DP
                 !Interpolated values at gauss point
                 velocityGaussprev=dependentInterpolatedPoint%values(1:3,NO_PART_DERIV)                
                 pressureGaussprev=dependentInterpolatedPoint%values(4,NO_PART_DERIV) 
@@ -12550,10 +12556,11 @@ CONTAINS
                 dUDXiprev(1:3,3)=dependentInterpolatedPoint%VALUES(1:3,PART_DERIV_S3)
 
                 !Get the previous time derivative of the pressure and velocity interpolation parameters
-                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE,elementIdx, &
+                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_SECOND_PREVIOUS_SET_TYPE,elementIdx, &
                   & dependentInterpolationParameters,ERR,ERROR,*999)
                 CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
                  & dependentInterpolatedPoint,ERR,ERROR,*999)
+                velocityGaussprevprev=0.0_DP
                 !Interpolated values at gauss point
                 velocityGaussprevprev=dependentInterpolatedPoint%values(1:3,NO_PART_DERIV)                
 
@@ -12599,7 +12606,7 @@ CONTAINS
                 velocityGaussprev=dependentInterpolatedPoint%values(1:3,NO_PART_DERIV)
                 pressureGaussprev=dependentInterpolatedPoint%values(4,NO_PART_DERIV)
                 !Get previous time derivative of the interpolated velocity
-                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_PREVIOUS_PREVIOUS_VALUES_SET_TYPE,elementIdx, &
+                CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_SECOND_PREVIOUS_SET_TYPE,elementIdx, &
                   & dependentInterpolationParameters,ERR,ERROR,*999)
                 CALL FIELD_INTERPOLATE_LOCAL_FACE_GAUSS(NO_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,faceIdx,gaussIdx, &
                  & dependentInterpolatedPoint,ERR,ERROR,*999)
@@ -12619,6 +12626,8 @@ CONTAINS
                 facePressureprev=facePressureprev+pressureGaussprev*faceNormal(componentIdx)*gaussWeight*pointMetrics%JACOBIAN
                 IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
                  & boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) THEN
+                  faceTraction = faceTraction + (viscousTerm(componentIdx) - pressureGauss)* &
+                    & faceNormal(componentIdx)*gaussWeight*pointMetrics%JACOBIAN
                   faceTractionprev = faceTractionprev + (viscousTermprev(componentIdx) - pressureGaussprev)* &
                     & faceNormal(componentIdx)*gaussWeight*pointMetrics%JACOBIAN
                   !faceTraction = faceTraction + traction(componentIdx)*faceNormal(componentIdx)*gaussWeight*pointMetrics%JACOBIAN
@@ -12774,6 +12783,7 @@ CONTAINS
       ! Check for a 1D equations set
       IF(ASSOCIATED(equationsSet)) THEN
         dependentField1D=>equationsSet%DEPENDENT%DEPENDENT_FIELD
+        materialField1D=>equationsSet%MATERIALS%MATERIALS_FIELD
         IF(.NOT.ASSOCIATED(dependentField1D)) THEN
           CALL FLAG_ERROR("Coupled 1D Dependent field is not associated.",err,error,*999)
         END IF
@@ -12783,6 +12793,7 @@ CONTAINS
         END IF
       ELSE
         CALL FLAG_ERROR("1D equations set is not associated.",err,error,*999)
+          computationalNode = COMPUTATIONAL_NODE_NUMBER_GET(ERR,ERROR)
       END IF
     CASE DEFAULT
       LOCAL_ERROR="Boundary flux calcluation for equations type "//TRIM(NUMBER_TO_VSTRING(equationsSet%SUBTYPE,"*",ERR,ERROR))// &
@@ -12792,6 +12803,8 @@ CONTAINS
 
     ! C o p y    i n t e g r a t e d   v a l u e s    t o    t a r g e t    f i e l d s
     ! ------------------------------------------------------------------------------------
+    computationalNode = COMPUTATIONAL_NODE_NUMBER_GET(ERR,ERROR)
+    done=.FALSE.
     ! Loop over elements again to allocate flux terms to boundary nodes
     DO elementIdx=1,elementsMapping3D%TOTAL_NUMBER_OF_LOCAL
       CALL Field_ParameterSetGetLocalElement(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
@@ -12817,8 +12830,8 @@ CONTAINS
 
         ! M a p   3 D - 1 D    b o u n d a r y    v a l u e s  
         ! --------------------------------------------------------
-        IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
-          & boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) THEN
+        IF((boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
+          & boundaryType==BOUNDARY_CONDITION_COUPLING_FLOW) .AND. .NOT.done) THEN
           !Get the impedance matching values          
           CALL FIELD_PARAMETER_SET_GET_CONSTANT(materialField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, & 
             & 1,R1,err,error,*999)
@@ -12854,6 +12867,22 @@ CONTAINS
             !couplingStress = globalBoundaryMeanNormalStress(boundaryID)
             couplingStress = P3D - L*dQ3Ddt - R2*Q3D + R1*C*dP3Ddt - R1*C*L*d2Q3Ddt2 - R1*C*R2*dQ3Ddt - R1*Q3D
             couplingFlow = globalBoundaryFlux(boundaryID)
+            IF(computationalNode==0) THEN
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  P3D:           ",P3D,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  d(P3D)/dt:     ",dP3Ddt,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  Q3D:           ",Q3D,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  d(Q3D)/dt:     ",dQ3Ddt,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  d^2(Q3D)/dt^2: ",d2Q3Ddt2,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  P1D:           ",couplingStress,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  Q1D:           ",couplingFlow,err,error,*999)
+            ENDIF
             ! Map the coupling flow and stress values from the 3D equations set to the coupled 1D field
             CALL FIELD_PARAMETER_SET_UPDATE_NODE(dependentField1D,FIELD_U1_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
               & 1,1,coupledNodeNumber,1,couplingFlow,err,error,*999)
@@ -12867,10 +12896,24 @@ CONTAINS
               & 1,1,coupledNodeNumber,1,q1Dprev,err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_NODE(dependentField1D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
               & 1,1,coupledNodeNumber,2,a1D,err,error,*999)
-            CALL FIELD_PARAMETER_SET_GET_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
-              & 1,1,coupledNodeNumber,1,p1D,err,error,*999)
             CALL FIELD_PARAMETER_SET_GET_NODE(dependentField1D,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE, &
-              & 1,1,coupledNodeNumber,1,p1Dprev,err,error,*999)
+              & 1,1,coupledNodeNumber,2,a1Dprev,err,error,*999)
+            !Get material parameters
+            CALL FIELD_PARAMETER_SET_GET_CONSTANT(materialField1D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+              & 4,pExternal,err,error,*999)
+            CALL Field_ParameterSetGetLocalNode(materialField1D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+              & 1,1,coupledNodeNumber,1,A0_PARAM,err,error,*999) 
+            CALL Field_ParameterSetGetLocalNode(materialField1D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+              & 1,1,coupledNodeNumber,2,E_PARAM,err,error,*999) 
+            CALL Field_ParameterSetGetLocalNode(materialField1D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+              & 1,1,coupledNodeNumber,3,H_PARAM,err,error,*999) 
+            IF(a1D < A0_PARAM*0.001_DP) a1D = A0_PARAM*0.001_DP
+            IF(a1Dprev < A0_PARAM*0.001_DP) a1Dprev = A0_PARAM*0.001_DP
+            beta = (4.0_DP*(SQRT(PI))*E_PARAM*H_PARAM)/(3.0_DP*A0_PARAM)  !(kg/m2/s2)
+            !Pressure equation in mmHg
+            p1D=(pExternal+beta*(SQRT(a1D)-SQRT(A0_PARAM)))!/(Mref/(Lref*Tref**2.0))!*0.0075_DP
+            p1Dprev=(pExternal+beta*(SQRT(a1Dprev)-SQRT(A0_PARAM)))!/(Mref/(Lref*Tref**2.0))!*0.0075_DP
+            !Calculate rates of change
             dp1Ddt = (p1D - p1Dprev)/timeStep
             dq1Ddt = (q1D - q1Dprev)/timeStep
             ! DEBUG
@@ -12894,6 +12937,20 @@ CONTAINS
             ! ! 1D pressure solution converged but 3D stress is off a bit since we are applying as an average
             ! IF (iteration3D1D > 1 .AND. ABS(couplingStress-stress1DPrevious) < tolerance) THEN
             !   CALL Field_ParameterSetEnsureCreated(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
+            IF(computationalNode==0) THEN
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  P1D:           ",P1D,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  d(P1D)/dt:     ",dP1Ddt,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  Q1D:           ",Q1D,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  d(Q1D)/dt:     ",dQ1Ddt,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  P3D:           ",couplingStress,err,error,*999)
+              CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"3D boundary ",boundaryID, &
+                & "  Q3D:           ",couplingFlow,err,error,*999)
+            ENDIF
             !     & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,ERR,ERROR,*999)
             !   CALL Field_ParameterSetGetLocalNode(dependentField1D,FIELD_U1_VARIABLE_TYPE, &
             !     & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,1,1,coupledNodeNumber,2,stress3DPrevious,err,error,*999)
@@ -12907,6 +12964,7 @@ CONTAINS
             CALL FIELD_PARAMETER_SET_UPDATE_NODE(dependentField1D,FIELD_U2_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
               & 1,1,coupledNodeNumber,3,couplingFlow,err,error,*999)
           END IF
+          done=.TRUE.
         END IF
 
         ! B o u n d a r y   F a c e    N o r m a l s

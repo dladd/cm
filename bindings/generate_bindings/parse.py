@@ -261,6 +261,8 @@ class LibrarySource(object):
         constant -- Name of the constant to get the value for
         """
 
+	sys.stderr.write("Trying to resolve constant value: %s\n"
+                % constant)
         assignment = self.lib_source.constants[constant].assignment
         exhausted = False
         while ((not self.lib_source.constants[constant].resolved) and

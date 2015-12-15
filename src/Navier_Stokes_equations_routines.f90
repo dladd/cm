@@ -2597,7 +2597,8 @@ CONTAINS
                & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE)
               !Update transient boundary conditions and any analytic values
               CALL NAVIER_STOKES_PRE_SOLVE_UPDATE_BOUNDARY_CONDITIONS(SOLVER,ERR,ERROR,*999)
-            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
               SELECT CASE(SOLVER%SOLVE_TYPE)
               ! --- D y n a m i c    S o l v e r s --- 
               CASE(SOLVER_DYNAMIC_TYPE)
@@ -2996,6 +2997,10 @@ CONTAINS
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
         PROBLEM%SUBTYPE=PROBLEM_COUPLED1D0D_NAVIER_STOKES_SUBTYPE
+      CASE(PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
+        PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
+        PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
+        PROBLEM%SUBTYPE=PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE
       CASE(PROBLEM_STREE1D0D_NAVIER_STOKES_SUBTYPE)
         PROBLEM%CLASS=PROBLEM_FLUID_MECHANICS_CLASS
         PROBLEM%TYPE=PROBLEM_NAVIER_STOKES_EQUATION_TYPE
@@ -3324,7 +3329,8 @@ CONTAINS
               CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
           END SELECT
         ! Multiscale: 3D/1D/0D coupled
-        CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+        CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+           & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
           SELECT CASE(PROBLEM_SETUP%SETUP_TYPE)
             CASE(PROBLEM_SETUP_INITIAL_TYPE)
               SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
@@ -3352,33 +3358,49 @@ CONTAINS
                   CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop,50,ERR,ERROR,*999)
                   CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop,0.001_DP,err,error,*999)
                   CALL ControlLoop_AbsoluteTolerance2Set(iterativeWhileLoop,0.1_DP,err,error,*999)
-                  CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop,"3D-1D Iterative Loop",ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop,2,ERR,ERROR,*999)
-                  NULLIFY(iterativeWhileLoop2)
-                  ! The 1D-0D boundary value iterative coupling loop
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)                
-                  CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop2,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop2,100,ERR,ERROR,*999)
-                  CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop2,0.1_DP,err,error,*999)
-                  CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop2,"1D-0D Iterative Coupling Convergence Loop",ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop2,2,ERR,ERROR,*999)
-                  NULLIFY(simpleLoop)
-                  ! The simple CellML solver loop
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)                
-                  CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"0D CellML solver Loop",ERR,ERROR,*999)
-                  NULLIFY(iterativeWhileLoop3)
-                  ! The Characteristics branch solver/ Navier-Stokes coupling loop
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)                
-                  CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop3,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop3,1000,ERR,ERROR,*999)
-                  CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop3,1.0E10_DP,err,error,*999)
-                  CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop3,"1D Iterative Loop",ERR,ERROR,*999)
-                  NULLIFY(simpleLoop)
-                  ! The 3D Navier-Stokes simple loop
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)                
-                  CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"3D Navier-Stokes",ERR,ERROR,*999)
+                  IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                    CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop,"3D-0D Iterative Loop",ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop,2,ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    ! The simple CellML solver loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,simpleLoop,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"0D CellML solver Loop",ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    ! The 3D Navier-Stokes simple loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"3D Navier-Stokes",ERR,ERROR,*999)
+                  ELSE
+                    CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop,"3D-1D Iterative Loop",ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop,2,ERR,ERROR,*999)
+                    NULLIFY(iterativeWhileLoop2)
+                    ! The 1D-0D boundary value iterative coupling loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop2,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop2,100,ERR,ERROR,*999)
+                    CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop2,0.1_DP,err,error,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop2,"1D-0D Iterative Coupling Convergence Loop",ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_NUMBER_OF_SUB_LOOPS_SET(iterativeWhileLoop2,2,ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    ! The simple CellML solver loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"0D CellML solver Loop",ERR,ERROR,*999)
+                    NULLIFY(iterativeWhileLoop3)
+                    ! The Characteristics branch solver/ Navier-Stokes coupling loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(iterativeWhileLoop3,PROBLEM_CONTROL_WHILE_LOOP_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_MAXIMUM_ITERATIONS_SET(iterativeWhileLoop3,1000,ERR,ERROR,*999)
+                    CALL ControlLoop_AbsoluteToleranceSet(iterativeWhileLoop3,1.0E10_DP,err,error,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(iterativeWhileLoop3,"1D Iterative Loop",ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    ! The 3D Navier-Stokes simple loop
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)                
+                    CALL CONTROL_LOOP_TYPE_SET(simpleLoop,PROBLEM_CONTROL_SIMPLE_TYPE,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_LABEL_SET(simpleLoop,"3D Navier-Stokes",ERR,ERROR,*999)
+                  END IF
+
                 CASE(PROBLEM_SETUP_FINISH_ACTION)
                   !Finish the control loops
                   CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
@@ -3400,85 +3422,131 @@ CONTAINS
                   ! The 3D-1D iterative coupling loop
                   NULLIFY(iterativeWhileLoop)
                   CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
-                  ! Iterative loop 2 couples 1D and 0D, checking convergence
-                  ! (this subloop holds 2 subloops)
-                  NULLIFY(iterativeWhileLoop2)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
+                  IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                    ! Simple loop 1 contains the 0D/CellML DAE solver
+                    ! (this subloop holds 1 solver)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(solvers)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,simpleLoop,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_START(simpleLoop,solvers,ERR,ERROR,*999)
+                    CALL SOLVERS_NUMBER_SET(solvers,1,ERR,ERROR,*999)
+                    !!!-- D A E --!!!
+                    NULLIFY(SOLVER)
+                    CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(solver,SOLVER_DAE_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(solver,"DAE Solver",ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    NULLIFY(SOLVER)
+                    !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_START(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
+                    CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(SOLVER,"Navier-Stokes 3D Solver",ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+                    CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                  ELSE
+                    ! Iterative loop 2 couples 1D and 0D, checking convergence
+                    ! (this subloop holds 2 subloops)
+                    NULLIFY(iterativeWhileLoop2)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
 
-                  ! Simple loop 1 contains the 0D/CellML DAE solver
-                  ! (this subloop holds 1 solver)
-                  NULLIFY(simpleLoop)
-                  NULLIFY(solvers)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_START(simpleLoop,solvers,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(solvers,1,ERR,ERROR,*999)
-                  !!!-- D A E --!!!
-                  NULLIFY(SOLVER)
-                  CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(solver,SOLVER_DAE_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_LABEL_SET(solver,"DAE Solver",ERR,ERROR,*999)
+                    ! Simple loop 1 contains the 0D/CellML DAE solver
+                    ! (this subloop holds 1 solver)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(solvers)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_START(simpleLoop,solvers,ERR,ERROR,*999)
+                    CALL SOLVERS_NUMBER_SET(solvers,1,ERR,ERROR,*999)
+                    !!!-- D A E --!!!
+                    NULLIFY(SOLVER)
+                    CALL SOLVERS_SOLVER_GET(solvers,1,solver,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(solver,SOLVER_DAE_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(solver,"DAE Solver",ERR,ERROR,*999)
 
-                  ! Iterative loop 3 couples N-S and characteristics, checking convergence of branch values
-                  ! (this subloop holds 2 solvers)
-                  NULLIFY(iterativeWhileLoop3)
-                  NULLIFY(SOLVERS)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_START(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
-                  !!!-- C H A R A C T E R I S T I C --!!!
-                  NULLIFY(SOLVER)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_LABEL_SET(SOLVER,"Characteristic Solver",ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
-                  !!!-- 1 D   N A V I E R   S T O K E S --!!!
-                  NULLIFY(SOLVER)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_LABEL_SET(solver,"Navier-Stokes 1D Solver",ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
-                  NULLIFY(simpleLoop)
-                  NULLIFY(SOLVERS)
-                  NULLIFY(SOLVER)
-                  !!!-- 3 D  N A V I E R   S T O K E S --!!!
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_START(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
-                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                  CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
-                  CALL SOLVER_LABEL_SET(SOLVER,"Navier-Stokes 3D Solver",ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
-                  CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
-                  CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                    ! Iterative loop 3 couples N-S and characteristics, checking convergence of branch values
+                    ! (this subloop holds 2 solvers)
+                    NULLIFY(iterativeWhileLoop3)
+                    NULLIFY(SOLVERS)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_START(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_NUMBER_SET(SOLVERS,2,ERR,ERROR,*999)
+                    !!!-- C H A R A C T E R I S T I C --!!!
+                    NULLIFY(SOLVER)
+                    CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(SOLVER,SOLVER_NONLINEAR_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(SOLVER,"Characteristic Solver",ERR,ERROR,*999)
+                    CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_PETSC_LIBRARY,ERR,ERROR,*999)
+                    !!!-- 1 D   N A V I E R   S T O K E S --!!!
+                    NULLIFY(SOLVER)
+                    CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(solver,"Navier-Stokes 1D Solver",ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+                    CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    NULLIFY(SOLVER)
+                    !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_START(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_NUMBER_SET(SOLVERS,1,ERR,ERROR,*999)
+                    CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                    CALL SOLVER_TYPE_SET(SOLVER,SOLVER_DYNAMIC_TYPE,ERR,ERROR,*999)
+                    CALL SOLVER_LABEL_SET(SOLVER,"Navier-Stokes 3D Solver",ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_LINEARITY_TYPE_SET(SOLVER,SOLVER_DYNAMIC_NONLINEAR,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_ORDER_SET(SOLVER,SOLVER_DYNAMIC_FIRST_ORDER,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_DEGREE_SET(SOLVER,SOLVER_DYNAMIC_FIRST_DEGREE,ERR,ERROR,*999)
+                    CALL SOLVER_DYNAMIC_SCHEME_SET(SOLVER,SOLVER_DYNAMIC_CRANK_NICOLSON_SCHEME,ERR,ERROR,*999)
+                    CALL SOLVER_LIBRARY_TYPE_SET(SOLVER,SOLVER_CMISS_LIBRARY,ERR,ERROR,*999)
+                  END IF
                 CASE(PROBLEM_SETUP_FINISH_ACTION)
                   NULLIFY(iterativeWhileLoop)
                   NULLIFY(iterativeWhileLoop2)
                   NULLIFY(SOLVERS)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
-                  !Finish the 0D solvers
-                  NULLIFY(simpleLoop)
-                  NULLIFY(SOLVERS)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                  !Finish the 1D solvers
-                  NULLIFY(iterativeWhileLoop3)
-                  NULLIFY(SOLVERS)
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
-                  NULLIFY(simpleLoop)
-                  NULLIFY(SOLVERS)
-                  !Finish the 3D solver
-                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
-                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                  CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                  IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                    !Finish the 0D solvers
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,simpleLoop,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    !Finish the 3D solver
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                  ELSE
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
+                    !Finish the 0D solvers
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                    !Finish the 1D solvers
+                    NULLIFY(iterativeWhileLoop3)
+                    NULLIFY(SOLVERS)
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                    NULLIFY(simpleLoop)
+                    NULLIFY(SOLVERS)
+                    !Finish the 3D solver
+                    CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                    CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                    CALL SOLVERS_CREATE_FINISH(SOLVERS,ERR,ERROR,*999)
+                  END IF
                 CASE DEFAULT
                   LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                     & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
@@ -3487,85 +3555,129 @@ CONTAINS
               END SELECT
             CASE(PROBLEM_SETUP_SOLVER_EQUATIONS_TYPE)
               !Get the control loop
-              CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-              NULLIFY(CONTROL_LOOP)
-              CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-              NULLIFY(iterativeWhileLoop)
-              NULLIFY(iterativeWhileLoop2)
-              NULLIFY(iterativeWhileLoop3)
-              NULLIFY(simpleLoop)
-              NULLIFY(SOLVERS)
-              NULLIFY(SOLVER)
-              ! 3D1D subloop                   
-              CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
-              ! 1D0D subloop                   
-              CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
-              ! 1D subloop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
-              ! 3D subloop
-              CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
-              SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
-              CASE(PROBLEM_SETUP_START_ACTION)
-                ! 1D NS/C subloop
-                CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
-                !!!-- C H A R A C T E R I S T I C --!!!
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
-                NULLIFY(SOLVER_EQUATIONS)
-                !!!-- 1 D  N A V I E R   S T O K E S --!!!
-                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC, &
-                 & ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
+              IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                NULLIFY(CONTROL_LOOP)
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                NULLIFY(iterativeWhileLoop)
+                NULLIFY(simpleLoop)
                 NULLIFY(SOLVERS)
-                NULLIFY(SOLVER_EQUATIONS)
-                !!!-- 3 D  N A V I E R   S T O K E S --!!!
-                CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                !Create the solver equations
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
-                & ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
-              CASE(PROBLEM_SETUP_FINISH_ACTION)
-                ! 1D NS/C subloop
                 NULLIFY(SOLVER)
+                ! 3D0D subloop                   
+                CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                ! 3D subloop
+                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+                CASE(PROBLEM_SETUP_START_ACTION)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVERS)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  !Create the solver equations
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+                  & ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                CASE(PROBLEM_SETUP_FINISH_ACTION)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVERS)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  !Finish the solver equations creation
+                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CASE DEFAULT
+                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                    & " is invalid for a Navier-Stokes fluid."
+                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                END SELECT
+              ELSE
+                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                NULLIFY(CONTROL_LOOP)
+                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                NULLIFY(iterativeWhileLoop)
+                NULLIFY(iterativeWhileLoop2)
+                NULLIFY(iterativeWhileLoop3)
+                NULLIFY(simpleLoop)
                 NULLIFY(SOLVERS)
-                NULLIFY(SOLVER_EQUATIONS)
-                CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
-                !!!-- C H A R A C T E R I S T I C --!!!
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
-                NULLIFY(SOLVER_EQUATIONS)
-                !!!-- 1 D  N A V I E R   S T O K E S --!!!
-                CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
-                NULLIFY(SOLVERS)
-                NULLIFY(SOLVER_EQUATIONS)
-                !!!-- 3 D  N A V I E R   S T O K E S --!!!
-                CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
-                !Finish the solver equations creation
-                CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
-              CASE DEFAULT
-                LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
-                  & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
-                  & " is invalid for a Navier-Stokes fluid."
-                CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-              END SELECT
+                NULLIFY(SOLVER)                  
+                ! 3D1D subloop                   
+                CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                ! 1D0D subloop                   
+                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
+                ! 1D subloop
+                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
+                ! 3D subloop
+                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,2,simpleLoop,ERR,ERROR,*999)
+                SELECT CASE(PROBLEM_SETUP%ACTION_TYPE)
+                CASE(PROBLEM_SETUP_START_ACTION)
+                  ! 1D NS/C subloop
+                  CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
+                  !!!-- C H A R A C T E R I S T I C --!!!
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_STATIC,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 1 D  N A V I E R   S T O K E S --!!!
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC, &
+                   & ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVERS)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  !Create the solver equations
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_START(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_LINEARITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_NONLINEAR,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_TIME_DEPENDENCE_TYPE_SET(SOLVER_EQUATIONS,SOLVER_EQUATIONS_FIRST_ORDER_DYNAMIC,&
+                  & ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_SPARSITY_TYPE_SET(SOLVER_EQUATIONS,SOLVER_SPARSE_MATRICES,ERR,ERROR,*999)
+                CASE(PROBLEM_SETUP_FINISH_ACTION)
+                  ! 1D NS/C subloop
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVERS)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  CALL CONTROL_LOOP_SOLVERS_GET(iterativeWhileLoop3,SOLVERS,ERR,ERROR,*999)
+                  !!!-- C H A R A C T E R I S T I C --!!!
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 1 D  N A V I E R   S T O K E S --!!!
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,2,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(SOLVERS)
+                  NULLIFY(SOLVER_EQUATIONS)
+                  !!!-- 3 D  N A V I E R   S T O K E S --!!!
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_SOLVER_EQUATIONS_GET(SOLVER,SOLVER_EQUATIONS,ERR,ERROR,*999)
+                  !Finish the solver equations creation
+                  CALL SOLVER_EQUATIONS_CREATE_FINISH(SOLVER_EQUATIONS,ERR,ERROR,*999)
+                CASE DEFAULT
+                  LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+                    & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+                    & " is invalid for a Navier-Stokes fluid."
+                  CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+                END SELECT
+              END IF
 
             !Create the CELLML solver equations
             CASE(PROBLEM_SETUP_CELLML_EQUATIONS_TYPE)
@@ -3574,39 +3686,70 @@ CONTAINS
                 !Get the control loop
                 CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP              
                 CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                ! 3D-1D loop
-                NULLIFY(iterativeWhileLoop)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
-                ! 1D-0D loop
-                NULLIFY(iterativeWhileLoop2)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
-                ! 0D loop
-                NULLIFY(simpleLoop)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
-                CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
-                NULLIFY(cellMLSolver)
-                NULLIFY(CELLML_EQUATIONS)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL CELLML_EQUATIONS_CREATE_START(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+                IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                  ! 3D-1D loop
+                  NULLIFY(iterativeWhileLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                  ! 0D loop
+                  NULLIFY(simpleLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,simpleLoop,ERR,ERROR,*999)
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(cellMLSolver)
+                  NULLIFY(CELLML_EQUATIONS)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL CELLML_EQUATIONS_CREATE_START(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+                ELSE
+                  ! 3D-1D loop
+                  NULLIFY(iterativeWhileLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                  ! 1D-0D loop
+                  NULLIFY(iterativeWhileLoop2)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
+                  ! 0D loop
+                  NULLIFY(simpleLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  NULLIFY(cellMLSolver)
+                  NULLIFY(CELLML_EQUATIONS)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL CELLML_EQUATIONS_CREATE_START(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+                END IF
               CASE(PROBLEM_SETUP_FINISH_ACTION)
                 !Get the control loop
-                CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
-                CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
-                ! 3D-1D
-                NULLIFY(iterativeWhileLoop)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
-                ! 1D-0D
-                NULLIFY(iterativeWhileLoop2)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
-                ! 0D
-                NULLIFY(simpleLoop)
-                CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
-                CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
-                NULLIFY(SOLVER)
-                CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
-                CALL SOLVER_CELLML_EQUATIONS_GET(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
-                CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+                IF (PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                  ! 3D-0D
+                  NULLIFY(iterativeWhileLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                  ! 0D
+                  NULLIFY(simpleLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,simpleLoop,ERR,ERROR,*999)
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_CELLML_EQUATIONS_GET(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+                  CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+                ELSE
+                  CONTROL_LOOP_ROOT=>PROBLEM%CONTROL_LOOP
+                  CALL CONTROL_LOOP_GET(CONTROL_LOOP_ROOT,CONTROL_LOOP_NODE,CONTROL_LOOP,ERR,ERROR,*999)
+                  ! 3D-1D
+                  NULLIFY(iterativeWhileLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(CONTROL_LOOP,1,iterativeWhileLoop,ERR,ERROR,*999)
+                  ! 1D-0D
+                  NULLIFY(iterativeWhileLoop2)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop,1,iterativeWhileLoop2,ERR,ERROR,*999)
+                  ! 0D
+                  NULLIFY(simpleLoop)
+                  CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,1,simpleLoop,ERR,ERROR,*999)
+                  CALL CONTROL_LOOP_SOLVERS_GET(simpleLoop,SOLVERS,ERR,ERROR,*999)
+                  NULLIFY(SOLVER)
+                  CALL SOLVERS_SOLVER_GET(SOLVERS,1,SOLVER,ERR,ERROR,*999)
+                  CALL SOLVER_CELLML_EQUATIONS_GET(solver,CELLML_EQUATIONS,ERR,ERROR,*999)
+                  CALL CELLML_EQUATIONS_CREATE_FINISH(CELLML_EQUATIONS,ERR,ERROR,*999)
+                END IF
               CASE DEFAULT
                 LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
                   & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(PROBLEM_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
@@ -6390,7 +6533,8 @@ CONTAINS
                   & " is invalid for the a 1D0D coupled Navier-Stokes problem."
                 CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
               END IF
-            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
               CALL CONTROL_LOOP_TIMES_GET(CONTROL_LOOP,startTime,stopTime,currentTime,timeIncrement, &
                & timestep,outputIteration,ERR,ERROR,*999)
               ! CALL NavierStokes_CalculateBoundaryFlux(SOLVER,ERR,ERROR,*999)
@@ -7344,7 +7488,8 @@ CONTAINS
               CALL NavierStokes_UpdateMultiscaleBoundary(EQUATIONS_SET,BOUNDARY_CONDITIONS, &
                 & CURRENT_TIME,TIME_INCREMENT,err,error,*999)
 
-            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+            CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
               ! TODO: this should be set up so it uses the same pre_solve steps as the individual 3D/1D equations sets
               SELECT CASE(SOLVER%SOLVE_TYPE)
               ! --- D y n a m i c    S o l v e r s ---
@@ -8401,6 +8546,7 @@ CONTAINS
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
                & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE, &
                & PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT1D_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_NAVIER_STOKES_SUBTYPE, &
@@ -8828,6 +8974,7 @@ CONTAINS
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT_RBS_NAVIER_STOKES_SUBTYPE, &
                & PROBLEM_CONSTITUTIVE_RBS_NAVIER_STOKES_SUBTYPE, &
+               & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE, &
                & PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
               ! do nothing ???
             CASE(PROBLEM_TRANSIENT1D_NAVIER_STOKES_SUBTYPE,PROBLEM_COUPLED1D0D_NAVIER_STOKES_SUBTYPE, &
@@ -9145,7 +9292,8 @@ CONTAINS
               END IF
             END IF
 
-          CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+          CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+            &  PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
             SOLVER_EQUATIONS=>SOLVER%SOLVER_EQUATIONS
             CALL CONTROL_LOOP_TIMES_GET(CONTROL_LOOP,START_TIME,STOP_TIME,CURRENT_TIME,TIME_INCREMENT, &
                & CURRENT_LOOP_ITERATION,OUTPUT_ITERATION_NUMBER,ERR,ERROR,*999)
@@ -11837,6 +11985,7 @@ CONTAINS
       IF(boundaryType == BOUNDARY_CONDITION_PRESSURE) integratedBoundary = .TRUE.
       IF(boundaryType == BOUNDARY_CONDITION_FIXED_PRESSURE) integratedBoundary = .TRUE.
       IF(boundaryType == BOUNDARY_CONDITION_COUPLING_STRESS) integratedBoundary = .TRUE.
+      IF(boundaryType == BOUNDARY_CONDITION_FIXED_CELLML) integratedBoundary = .TRUE.
 
       !Get the mesh decomposition and basis
       decomposition=>dependentVariable%FIELD%DECOMPOSITION
@@ -12014,6 +12163,7 @@ CONTAINS
 
             ! Check for Neumann integrated boundary types rather than fixe pressure types
             IF(boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS .OR. &
+              & boundaryType==BOUNDARY_CONDITION_FIXED_CELLML .OR. &
               & boundaryType==BOUNDARY_CONDITION_PRESSURE) THEN
               !Get the pressure value interpolation parameters
               pressureInterpolationParameters=>equations%INTERPOLATION%DEPENDENT_INTERP_PARAMETERS( &
@@ -12026,6 +12176,9 @@ CONTAINS
                & pressureInterpolatedPoint,ERR,ERROR,*999)
               boundaryPressure=pressureInterpolatedPoint%VALUES(4,NO_PART_DERIV)
               pressure = boundaryPressure
+              IF (boundaryType==BOUNDARY_CONDITION_FIXED_CELLML) THEN
+                pressure = -boundaryPressure
+              END IF
             END IF
 
             !Jacobian and Gauss weighting term
@@ -12046,6 +12199,7 @@ CONTAINS
 
                   IF (.NOT. jacobianFlag) THEN
                     IF (boundaryType==BOUNDARY_CONDITION_PRESSURE .OR. &
+                      & boundaryType==BOUNDARY_CONDITION_FIXED_CELLML .OR. &
                       & boundaryType==BOUNDARY_CONDITION_COUPLING_STRESS) THEN
                       ! RHS contribution is integrated pressure term
                       rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) = rhsVector%ELEMENT_VECTOR%VECTOR(elementDof) + &
@@ -12167,12 +12321,13 @@ CONTAINS
   !
 
   !> Calculate the fluid flux through 3D boundaries for use in problems with coupled solutions (e.g. multidomain)
-  SUBROUTINE NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,err,error,*)
+  SUBROUTINE NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,convergedFlag,err,error,*)
 
     !Argument variables
     TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet !<A pointer to the equations set
     TYPE(EQUATIONS_SET_TYPE), POINTER :: coupledEquationsSet !<A pointer to the coupled equations set (for 3D-1D coupling)
     INTEGER(INTG), INTENT(IN) :: iteration3D1D !<iteration number for the 3D-1D loop if this is a coupled problem
+    LOGICAL, INTENT(INOUT) :: convergedFlag !<convergence flag for 3D-0D coupling
     INTEGER(INTG), INTENT(OUT) :: err !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
     !Local Variables
@@ -12219,8 +12374,10 @@ CONTAINS
     REAL(DP) :: localBoundaryFlux(10),localBoundaryArea(10),globalBoundaryFlux(10),globalBoundaryArea(10)
     REAL(DP) :: localBoundaryPressure(10),globalBoundaryPressure(10),globalBoundaryMeanPressure(10)
     REAL(DP) :: localBoundaryNormalStress(10),globalBoundaryNormalStress(10),globalBoundaryMeanNormalStress(10)
-    REAL(DP) :: couplingFlow,couplingStress,p1D,q1D,a1D,p3D,stress3DPrevious,stress1DPrevious,tolerance
-    LOGICAL :: couple1DTo3D,couple3DTo1D
+    REAL(DP) :: couplingFlow,couplingStress,p1D,q1D,a1D,p3D,stress3DPrevious,stress1DPrevious,tolerance,p0D,q0D
+    REAL(DP) :: flowError,pressureError
+    LOGICAL :: couple1DTo3D,couple3DTo1D,boundary3D0DFound(10),boundary3D0DConverged(10)
+    LOGICAL, ALLOCATABLE :: globalConverged(:)
     TYPE(VARYING_STRING) :: LOCAL_ERROR
 
     REAL(DP), POINTER :: geometricParameters(:)
@@ -12255,6 +12412,7 @@ CONTAINS
 
     couple1DTo3D = .FALSE.
     couple3DTo1D = .FALSE.
+    boundary3D0DFound = .FALSE.
     SELECT CASE(equationsSet%SUBTYPE)
     ! 3 D   t y p e s :   I n t e g r a t e   b o u n d a r y   v a l u e s
     ! ------------------------------------------------------------------------
@@ -12636,8 +12794,11 @@ CONTAINS
       CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)     
     END SELECT
 
+    !CALL Field_ParameterSetEnsureCreated(equationsSetField3D,FIELD_U_VARIABLE_TYPE, &
+    !  & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,err,error,*999)
     ! C o p y    i n t e g r a t e d   v a l u e s    t o    t a r g e t    f i e l d s
     ! ------------------------------------------------------------------------------------
+    convergedFlag = .TRUE.
     ! Loop over elements again to allocate flux terms to boundary nodes
     DO elementIdx=1,elementsMapping3D%TOTAL_NUMBER_OF_LOCAL
       CALL Field_ParameterSetGetLocalElement(equationsSetField3D,FIELD_V_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
@@ -12798,6 +12959,35 @@ CONTAINS
                   CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)                         
                 END IF
               ELSE
+                IF(boundaryType==BOUNDARY_CONDITION_FIXED_CELLML) THEN
+                  ! Check current values against those passed to the CellML solver
+                  CALL Field_ParameterSetGetLocalNode(equationsSetField3D,FIELD_U_VARIABLE_TYPE, &
+                   & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,1,1,nodeNumber,1,q0D,err,error,*999)
+                  CALL Field_ParameterSetGetLocalNode(equationsSetField3D,FIELD_U_VARIABLE_TYPE, &
+                   & FIELD_PREVIOUS_ITERATION_VALUES_SET_TYPE,1,1,nodeNumber,2,p0D,err,error,*999)
+                  ! CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"0D boundary ",boundaryID,"  flow:  ", &
+                  !   & q0D,err,error,*999)
+                  ! CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"0D boundary ",boundaryID,"  pressure:  ", &
+                  !   & p0D,err,error,*999)
+                  flowError = globalBoundaryFlux(boundaryID)-q0D
+                  pressureError = globalBoundaryMeanPressure(boundaryID)+p0D
+                  IF (ABS(flowError) < 1.0E-6_DP .AND. ABS(pressureError) < 1.0E-6_DP) THEN
+                    !convergedFlag = .TRUE.
+                  ELSE
+                    IF (.NOT. boundary3D0DFound(boundaryID)) THEN
+                      CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"  0D boundary ",boundaryID,"  flow: ", &
+                        & q0D,err,error,*999)
+                      CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"  0D boundary ",boundaryID,"  pressure: ", &
+                        & p0D,err,error,*999)
+                      CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"  0D boundary ",boundaryID,"  flow error: ", &
+                        & flowError,err,error,*999)
+                      CALL WriteStringTwoValue(DIAGNOSTIC_OUTPUT_TYPE,"  0D boundary ",boundaryID,"  pressure error: ", &
+                        & pressureError,err,error,*999)
+                      boundary3D0DFound(boundaryID) = .TRUE.
+                    END IF
+                    convergedFlag = .FALSE.
+                  END IF
+                END IF
                 ! Update flow rates on 3D boundary equations set field
                 CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_NODE(equationsSetField3D,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
                   & versionNumber,faceNodeDerivativeIdx,nodeNumber,1,globalBoundaryFlux(boundaryID),err,error,*999) 
@@ -12809,6 +12999,20 @@ CONTAINS
         END DO !faceIdx
       END IF !boundaryIdentifier
     END DO !elementIdx                 
+
+    !allocate array for mpi communication
+    IF(numberOfComputationalNodes>1) THEN !use mpi
+      ALLOCATE(globalConverged(numberOfComputationalNodes),STAT=ERR) 
+      IF(ERR/=0) CALL FLAG_ERROR("Could not allocate global convergence check array.",ERR,ERROR,*999)
+      CALL MPI_ALLGATHER(convergedFlag,1,MPI_LOGICAL,globalConverged,1,MPI_LOGICAL, &
+       & COMPUTATIONAL_ENVIRONMENT%MPI_COMM,MPI_IERROR)
+      CALL MPI_ERROR_CHECK("MPI_ALLGATHER",MPI_IERROR,ERR,ERROR,*999)
+      IF(ALL(globalConverged)) THEN
+        convergedFlag = .TRUE.
+      ELSE
+        convergedFlag = .FALSE.
+      END IF 
+    END IF
  
    ! Distribute any updated ields
     IF (ASSOCIATED(equationsSetField3D)) THEN
@@ -13937,6 +14141,7 @@ CONTAINS
     TYPE(VARYING_STRING) :: localError
     INTEGER(INTG) :: numberOfSolvers,solverIdx,solverIdx2,equationsSetIdx,equationsSetIdx2
     INTEGER(INTG) :: subloopIdx,subloopIdx2,subloopIdx3,iteration3D1D
+    LOGICAL :: convergedFlag
     character(70) :: label
 
     CALL ENTERS("NavierStokes_ControlLoopPostLoop",err,error,*999)
@@ -13945,6 +14150,7 @@ CONTAINS
     NULLIFY(coupledEquationsSet)
     NULLIFY(dependentField)
     NULLIFY(fieldVariable)
+    convergedFlag = .FALSE.
 
     IF(ASSOCIATED(controlLoop)) THEN
       SELECT CASE(controlLoop%PROBLEM%SUBTYPE)
@@ -13965,7 +14171,7 @@ CONTAINS
             equationsSet=>navierStokesSolver%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
             dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
             IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
-              CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,0,ERR,ERROR,*999)
+              CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,0,convergedFlag,ERR,ERROR,*999)
             END IF
             CALL NAVIER_STOKES_POST_SOLVE_OUTPUT_DATA(navierStokesSolver,err,error,*999)
           ELSE
@@ -14025,7 +14231,8 @@ CONTAINS
           CALL FLAG_ERROR(localError,err,error,*999)
         END SELECT
 
-      CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE)
+      CASE(PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE, &
+         & PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE)
         SELECT CASE(controlLoop%LOOP_TYPE)
         ! Simple loops- could be 3D or 0D
         CASE(PROBLEM_CONTROL_SIMPLE_TYPE)
@@ -14054,42 +14261,44 @@ CONTAINS
                       ! 3D-1D iteration
                       iteration3D1D=controlLoop%PARENT_LOOP%WHILE_LOOP%ITERATION_NUMBER
                       ! 1D-0D
-                      iterativeWhileLoop2=>controlLoop%PARENT_LOOP%SUB_LOOPS(1)%PTR                      
-                      ! 1D
-                      CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
-                      IF (.NOT. ASSOCIATED(iterativeWhileLoop3)) THEN
-                        CALL FLAG_ERROR("Could not find 1D subloop!",err,error,*999)
+                      IF (controlLoop%PROBLEM%SUBTYPE==PROBLEM_MULTISCALE_NAVIER_STOKES_SUBTYPE) THEN
+                        iterativeWhileLoop2=>controlLoop%PARENT_LOOP%SUB_LOOPS(1)%PTR                      
+                        ! 1D
+                        CALL CONTROL_LOOP_SUB_LOOP_GET(iterativeWhileLoop2,2,iterativeWhileLoop3,ERR,ERROR,*999)
+                        IF (.NOT. ASSOCIATED(iterativeWhileLoop3)) THEN
+                          CALL FLAG_ERROR("Could not find 1D subloop!",err,error,*999)
+                        END IF
+                        IF(iterativeWhileLoop3%NUMBER_OF_SUB_LOOPS==0) THEN
+                          DO solverIdx2=1,iterativeWhileLoop3%SOLVERS%NUMBER_OF_SOLVERS
+                            solverMapping2=>iterativeWhileLoop3%SOLVERS%SOLVERS(solverIdx2)%PTR%SOLVER_EQUATIONS%SOLVER_MAPPING
+                            IF(ASSOCIATED(solverMapping2)) THEN
+                              DO equationsSetIdx2 = 1,solverMapping2%NUMBER_OF_EQUATIONS_SETS
+                                equationsSet2=>solverMapping2%EQUATIONS_SETS(equationsSetIdx)%PTR
+                                IF(ASSOCIATED(equationsSet2)) THEN
+                                  SELECT CASE(equationsSet2%SUBTYPE)
+                                  CASE(EQUATIONS_SET_TRANSIENT1D_NAVIER_STOKES_SUBTYPE, &
+                                    &  EQUATIONS_SET_COUPLED1D0D_NAVIER_STOKES_SUBTYPE)
+                                    IF(ASSOCIATED(coupledEquationsSet)) THEN
+                                      localError="Coupled 3D-1D equations set already found for multiscale Navier-Stokes problem."
+                                      CALL FLAG_ERROR(localError,err,error,*999)                                     
+                                    ELSE
+                                      coupledEquationsSet=>equationsSet2
+                                    END IF
+                                  CASE DEFAULT  
+                                    ! Do nothing
+                                  END SELECT
+                                ELSE
+                                  CALL FLAG_ERROR("Equations set 2 is not associated.",err,error,*999)
+                                END IF
+                              END DO ! equations set loop 2
+                            ELSE
+                              CALL FLAG_ERROR("Solver mapping 2 is not associated.",ERR,ERROR,*999)
+                            END IF !
+                          END DO ! solverIdx2
+                        ELSE 
+                          CALL FLAG_ERROR("Unrecognized subloop pattern for 3D-1D-0D!.",ERR,ERROR,*999)
+                        END IF ! check for futher subloops
                       END IF
-                      IF(iterativeWhileLoop3%NUMBER_OF_SUB_LOOPS==0) THEN
-                        DO solverIdx2=1,iterativeWhileLoop3%SOLVERS%NUMBER_OF_SOLVERS
-                          solverMapping2=>iterativeWhileLoop3%SOLVERS%SOLVERS(solverIdx2)%PTR%SOLVER_EQUATIONS%SOLVER_MAPPING
-                          IF(ASSOCIATED(solverMapping2)) THEN
-                            DO equationsSetIdx2 = 1,solverMapping2%NUMBER_OF_EQUATIONS_SETS
-                              equationsSet2=>solverMapping2%EQUATIONS_SETS(equationsSetIdx)%PTR
-                              IF(ASSOCIATED(equationsSet2)) THEN
-                                SELECT CASE(equationsSet2%SUBTYPE)
-                                CASE(EQUATIONS_SET_TRANSIENT1D_NAVIER_STOKES_SUBTYPE, &
-                                  &  EQUATIONS_SET_COUPLED1D0D_NAVIER_STOKES_SUBTYPE)
-                                  IF(ASSOCIATED(coupledEquationsSet)) THEN
-                                    localError="Coupled 3D-1D equations set already found for multiscale Navier-Stokes problem."
-                                    CALL FLAG_ERROR(localError,err,error,*999)                                     
-                                  ELSE
-                                    coupledEquationsSet=>equationsSet2
-                                  END IF
-                                CASE DEFAULT  
-                                  ! Do nothing
-                                END SELECT
-                              ELSE
-                                CALL FLAG_ERROR("Equations set 2 is not associated.",err,error,*999)
-                              END IF
-                            END DO ! equations set loop 2
-                          ELSE
-                            CALL FLAG_ERROR("Solver mapping 2 is not associated.",ERR,ERROR,*999)
-                          END IF !
-                        END DO ! solverIdx2
-                      ELSE 
-                        CALL FLAG_ERROR("Unrecognized subloop pattern for 3D-1D-0D!.",ERR,ERROR,*999)
-                      END IF ! check for futher subloops
                       ! ! Have the 3D N-S equations set, now find the 1D from the parent loop
                       ! DO subloopIdx=1,controlLoop%PARENT_LOOP%NUMBER_OF_SUB_LOOPS
                       !   !subloop=>controlLoop%PARENT_LOOP%SUB_LOOPS(subloopIdx)%PTR
@@ -14127,7 +14336,18 @@ CONTAINS
                       ! END DO ! subloopIdx
                       dependentField=>equationsSet%DEPENDENT%DEPENDENT_FIELD
                       IF(dependentField%DECOMPOSITION%CALCULATE_FACES) THEN
-                        CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,ERR,ERROR,*999)
+                        CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D, &
+                          & convergedFlag,ERR,ERROR,*999)
+                        ! Check for 3D-0D convergence
+                        IF (controlLoop%PROBLEM%SUBTYPE==PROBLEM_COUPLED3D0D_NAVIER_STOKES_SUBTYPE) THEN
+                          IF (convergedFlag) THEN
+                            controlLoop%PARENT_LOOP%WHILE_LOOP%CONTINUE_LOOP=.FALSE.
+                            CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"3D-0D converged, iterations: ", &
+                              & iteration3D1D,err,error,*999)
+                          ELSE
+                            controlLoop%PARENT_LOOP%WHILE_LOOP%CONTINUE_LOOP=.TRUE.                            
+                          END IF
+                        END IF
                       END IF
                     CASE DEFAULT  
                       localError="Equations set subtype "//TRIM(NUMBER_TO_VSTRING(equationsSet%SUBTYPE,"*",err,error))// &
@@ -14213,6 +14433,10 @@ CONTAINS
           ! TODO: here we get loop type by label- may need to think of a more robust way to do this
           CALL CONTROL_LOOP_LABEL_GET(controlLoop,label,err,error,*999)
           SELECT CASE(label)
+          CASE("3D-0D Iterative Loop")
+            ! Will handle 3D-0D coupling in calc boundary flux
+            ! update 3D/D coupling parameters and check convergence
+            !CALL NavierStokes_Couple3D0D(controlLoop,err,error,*999)
           CASE("3D-1D Iterative Loop")
             ! update 1D/3D coupling parameters and check convergence
             CALL NavierStokes_Couple3D1D(controlLoop,err,error,*999)
@@ -14229,7 +14453,8 @@ CONTAINS
               IF (ASSOCIATED(navierStokesSolver3D)) THEN
                 equationsSet=>navierStokesSolver1D%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
                 coupledEquationsSet=>navierStokesSolver3D%SOLVER_EQUATIONS%SOLVER_MAPPING%EQUATIONS_SETS(1)%PTR
-                CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D,ERR,ERROR,*999)
+                CALL NavierStokes_CalculateBoundaryFlux(equationsSet,coupledEquationsSet,iteration3D1D, &
+                  & convergedFlag,ERR,ERROR,*999)
               ELSE
                 CALL FLAG_ERROR("Could not locate 3D solver from 1d-0d subloop",ERR,ERROR,*999)
               END IF

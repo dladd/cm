@@ -618,6 +618,8 @@ MODULE SOLVER_ROUTINES
 
   PUBLIC SOLVER_VARIABLES_FIELD_UPDATE
 
+  PUBLIC Solver_VariablesCellMLFieldsPreviousValuesUpdate
+
   PUBLIC SOLVERS_CREATE_FINISH,SOLVERS_CREATE_START
 
   PUBLIC SOLVERS_DESTROY
@@ -19628,6 +19630,103 @@ CONTAINS
     
   END SUBROUTINE SOLVER_VARIABLES_FIELD_UPDATE
   
+  !
+  !================================================================================================================================
+  !
+
+  !>Updates the previous values from the solver solution for CellML fields
+  SUBROUTINE Solver_VariablesCellMLFieldsPreviousValuesUpdate(solver,err,error,*)
+
+    !Argument variables
+    TYPE(SOLVER_TYPE), POINTER :: solver !<A pointer the solver to update the variables from
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+    !Local Variables
+    INTEGER(INTG) :: cellMLIdx
+    LOGICAL :: previousCreated
+    TYPE(CELLML_TYPE), POINTER :: cellml
+    TYPE(CELLML_EQUATIONS_TYPE), POINTER :: cellmlEquations
+    TYPE(DAE_SOLVER_TYPE), POINTER :: daeSolver
+    TYPE(FIELD_TYPE), POINTER :: stateField,parametersField,intermediateField
+    TYPE(VARYING_STRING) :: localError
+
+    CALL ENTERS("Solver_VariablesCellMLFieldsPreviousValuesUpdate",ERR,ERROR,*999)
+
+    IF(ASSOCIATED(solver)) THEN
+      IF(solver%SOLVER_FINISHED) THEN
+        daeSolver=>solver%DAE_SOLVER
+        IF(ASSOCIATED(daeSolver)) THEN
+          cellMLEquations=>solver%CELLML_EQUATIONS
+          IF(ASSOCIATED(cellMLEquations)) THEN
+            DO cellmlIdx=1,cellMLEquations%NUMBER_OF_CELLML_ENVIRONMENTS
+              cellML=>cellmlEquations%CELLML_ENVIRONMENTS(cellmlIdx)%PTR
+              IF(ASSOCIATED(cellML)) THEN
+                IF(ASSOCIATED(cellml%STATE_FIELD)) THEN
+                  stateField=>cellml%STATE_FIELD%STATE_FIELD
+                  IF(ASSOCIATED(stateField)) THEN
+                    CALL FIELD_PARAMETER_SET_CREATED(stateField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE, &
+                      & previousCreated,err,error,*999)
+                    IF(previousCreated) THEN
+                      CALL FIELD_PARAMETER_SETS_COPY(stateField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                        & FIELD_PREVIOUS_VALUES_SET_TYPE,1.0_DP,err,error,*999)                      
+                    ENDIF
+                  ELSE
+                    CALL FLAG_ERROR("CellML states state field is not associated.",err,error,*999)
+                  ENDIF
+                ENDIF
+                IF(ASSOCIATED(cellml%PARAMETERS_FIELD)) THEN
+                  parametersField=>cellml%PARAMETERS_FIELD%PARAMETERS_FIELD
+                  IF(ASSOCIATED(parametersField)) THEN
+                    CALL FIELD_PARAMETER_SET_CREATED(parametersField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE, &
+                      & previousCreated,err,error,*999)
+                    IF(previousCreated) THEN
+                      CALL FIELD_PARAMETER_SETS_COPY(parametersField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                        & FIELD_PREVIOUS_VALUES_SET_TYPE,1.0_DP,err,error,*999)                      
+                    ENDIF
+                  ELSE
+                    CALL FLAG_ERROR("CellML parameters parameters field is not associated.",err,error,*999)
+                  ENDIF
+                ENDIF
+                IF(ASSOCIATED(cellml%INTERMEDIATE_FIELD)) THEN
+                  intermediateField=>cellml%INTERMEDIATE_FIELD%INTERMEDIATE_FIELD
+                  IF(ASSOCIATED(intermediateField)) THEN
+                    CALL FIELD_PARAMETER_SET_CREATED(intermediateField,FIELD_U_VARIABLE_TYPE,FIELD_PREVIOUS_VALUES_SET_TYPE, &
+                      & previousCreated,err,error,*999)
+                    IF(previousCreated) THEN
+                      CALL FIELD_PARAMETER_SETS_COPY(intermediateField,FIELD_U_VARIABLE_TYPE,FIELD_VALUES_SET_TYPE, &
+                        & FIELD_PREVIOUS_VALUES_SET_TYPE,1.0_DP,err,error,*999)                      
+                    ENDIF
+                  ELSE
+                    CALL FLAG_ERROR("CellML intermediate intermediate field is not associated.",err,error,*999)
+                  ENDIF
+                ENDIF
+              ELSE
+                localError="CellML is not associated for the environment index "// &
+                  & TRIM(NUMBER_TO_VSTRING(cellmlIdx,"*",err,error))//"."
+                CALL FLAG_ERROR(localError,err,error,*999)
+              ENDIF
+            ENDDO !cellmlIdx
+          ELSE
+            CALL FLAG_ERROR("Solver CellML equations is not associated.",ERR,ERROR,*999)
+          ENDIF
+        ELSE
+          CALL FLAG_ERROR("Solver DAE solver is not associated.",ERR,ERROR,*999)
+        ENDIF
+      ELSE
+        CALL FLAG_ERROR("Solver has not been finished.",ERR,ERROR,*999)
+      ENDIF
+    ELSE
+      CALL FLAG_ERROR("Solver is not associated.",ERR,ERROR,*999)
+    ENDIF
+
+    CALL EXITS("Solver_VariablesCellMLFieldsPreviousValuesUpdate")
+    RETURN
+999 CALL ERRORS("Solver_VariablesCellMLFieldsPreviousValuesUpdate",ERR,ERROR)
+    CALL EXITS("Solver_VariablesCellMLFieldsPreviousValuesUpdate")
+    RETURN 1
+
+  END SUBROUTINE Solver_VariablesCellMLFieldsPreviousValuesUpdate
+
   !
   !================================================================================================================================
   !
